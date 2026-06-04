@@ -1,53 +1,75 @@
 "use strict";
-// Lock acquire/release/interpret, by stable GUID (resolves a fresh transient id each call).
-// Reuses the unchanged apiManager. Ownership is decided by matching the server's lockUser
-// against our username — NOT the extension's lockGranted flag, which is buggy
-// (Boolean("false") === true). Confirmed server behavior: the same user re-locking an
-// already-held lock is granted again, so own-stale-lock reclaim is automatic (no force);
-// a lock held by another user must be shown and never force-broken.
+// Lock model (verified against the live server — see investigation notes):
+//   * Team/GUI lock ("check out", lockType "teamMember") is visible read-only in getPal().teamInfo
+//     with the real owner profile (email/name). It BLOCKS LockPal.do (which then returns a null
+//     owner, so LockPal alone can't identify the holder).
+//   * Webstart lock (LockPal.do, what palsync uses) is NOT in teamInfo and is re-granted to the
+//     same user. lockGranted === true is the authoritative "you got it" signal.
+// So: read the owner from teamInfo (no lock needed); use lockGranted to know if we acquired.
 const { CloudPistonAPIManager } = require("../../lib/apiManager");
 const { resolveServerPalByGuid } = require("./resolve");
 
-// Pure: given a parsed lockInfo + our username, who holds it and is it us?
-function interpretLock(lockInfo, ourUsername) {
-    const holder = lockInfo && lockInfo.lockUser ? String(lockInfo.lockUser) : null;
-    const ours = !!(holder && ourUsername && holder.includes(ourUsername));
-    let since = null;
-    const ms = lockInfo && lockInfo.lockDate ? Number(lockInfo.lockDate) : NaN;
-    if (Number.isFinite(ms) && ms > 0) since = new Date(ms);
-    return { holder, ours, since };
+// Force-override (Lock-Force against a team/GUI lock) is NOT yet trusted: whether Lock-Force
+// actually breaks a teamMember lock is unverified, and breaking a live GUI checkout could destroy
+// another user's unsaved work. Stays false until verified on a throwaway GUI-locked pal.
+const OVERRIDE_ENABLED = false;
+
+function sameUser(email, username) {
+    return !!(email && username && String(email).toLowerCase() === String(username).toLowerCase());
 }
 
-function sinceText(date) {
-    return date ? date.toISOString() : "unknown time";
+// Read the real lock owner WITHOUT acquiring anything. getPal is read-only; teamInfo is present
+// only when a team/GUI lock is held. Returns { lockType, since, ownerEmail, ownerName } or null.
+async function readTeamLock(session, palId) {
+    const gp = await CloudPistonAPIManager.getPal(session, palId);
+    const ti = gp && gp.teamInfo && gp.teamInfo["com.contractpal.pal.TeamInfo"];
+    if (!ti) return null;
+    const p = ti.profile || {};
+    return {
+        lockType: ti.lockType,
+        since: ti.lockDate && (ti.lockDate._text || ti.lockDate) || null,
+        ownerEmail: p.email || null,
+        ownerName: [p.firstName, p.lastName].filter(Boolean).join(" ") || p.profileName || null
+    };
 }
 
-// Acquire the lock for a pal by GUID. force=true sends Lock-Force (only ever used to reclaim
-// OUR OWN lock — never another user's). Returns a status object; on heldByOther it clears
-// session.lockInfo so we can never accidentally unlock someone else's lock.
+function holderLabel(team) {
+    return (team.ownerName ? team.ownerName : "(unknown)") + (team.ownerEmail ? " (" + team.ownerEmail + ")" : "");
+}
+
+// Acquire the Webstart lock for a pal by GUID. Detects a blocking team/GUI lock first (read-only)
+// and reports the real owner. force only ever attempts Lock-Force when OVERRIDE_ENABLED is true.
 async function acquireByGuid(session, guid, { force = false } = {}) {
     const resolved = await resolveServerPalByGuid(session, guid);
     if (!resolved) throw new Error("GUID " + guid + " not found on " + session.environment.url);
 
-    await CloudPistonAPIManager.lockPal(session, resolved.id, force); // sets session.lockInfo from header
-
-    if (!session.lockInfo) {
-        return { acquired: false, reason: "server returned no lock information", resolved };
+    // 1) Team/GUI lock? (read-only) — that blocks LockPal; we can name the real owner.
+    const team = await readTeamLock(session, resolved.id);
+    if (team) {
+        const mine = sameUser(team.ownerEmail, session.username);
+        if (!force) {
+            return { acquired: false, blocked: mine ? "gui-lock-self" : "gui-lock-other",
+                     holder: holderLabel(team), holderEmail: team.ownerEmail, since: team.since, resolved };
+        }
+        if (!OVERRIDE_ENABLED) {
+            // Override requested (typed-OVERRIDE confirmed upstream) but the force path is not yet
+            // verified/enabled. Refuse rather than silently no-op or risk destroying GUI work.
+            return { acquired: false, blocked: "override-disabled",
+                     holder: holderLabel(team), holderEmail: team.ownerEmail, since: team.since, resolved };
+        }
+        // force && OVERRIDE_ENABLED → fall through to Lock-Force (post-verification only)
     }
 
-    const interp = interpretLock(session.lockInfo, session.username);
-
-    if (!interp.ours && !force) {
-        // Held by someone else — do NOT force. Drop the foreign lockInfo so release() can't touch it.
-        const heldBy = interp.holder;
-        const since = interp.since;
-        session.lockInfo = undefined;
-        return { acquired: false, heldByOther: true, holder: heldBy, since, sinceText: sinceText(since), resolved };
+    // 2) Webstart lock. lockGranted (now parsed correctly) is the authoritative proceed signal.
+    await CloudPistonAPIManager.lockPal(session, resolved.id, force);
+    const granted = !!(session.lockInfo && session.lockInfo.lockGranted === true);
+    if (granted) {
+        try { await CloudPistonAPIManager.getPlatformInfo(session, resolved.id); } catch (e) { /* best-effort */ }
+        return { acquired: true, reclaimed: force, resolved };
     }
-
-    // Ours (fresh, or own-stale reclaim, or forced). Prime platform version like the extension.
-    try { await CloudPistonAPIManager.getPlatformInfo(session, resolved.id); } catch (e) { /* best-effort */ }
-    return { acquired: true, reclaimed: force, holder: interp.holder, since: interp.since, sinceText: sinceText(interp.since), resolved };
+    // Denied with no team lock + null owner → genuinely unknown holder.
+    session.lockInfo = undefined;
+    return { acquired: false, blocked: "unknown-holder", resolved };
 }
 
 // Release the lock we hold. Idempotent; never unlocks a lock we don't hold.
@@ -56,22 +78,24 @@ async function releaseByGuid(session, guid) {
     const resolved = await resolveServerPalByGuid(session, guid);
     if (!resolved) throw new Error("GUID " + guid + " not found on " + session.environment.url);
     const resp = await CloudPistonAPIManager.unlockPal(session, resolved.id);
-    session.lockInfo = undefined; // we no longer hold it
-    // Unlock returns 200 with (possibly) a body; treat no-throw as released, report success when present.
+    session.lockInfo = undefined;
     return { released: true, serverSuccess: resp ? !!resp.success : undefined };
 }
 
-// Read current lock holder by attempting a lock (the only way the API exposes it). For the
-// same user this re-grants (harmless during our session); for another user it reports them.
+// Read-only status: who holds it, from teamInfo (no lock attempt). Falls back to our own
+// in-session Webstart lock if we hold one.
 async function statusByGuid(session, guid) {
-    const result = await acquireByGuid(session, guid, { force: false });
-    if (result.acquired) {
-        return { locked: true, byUs: true, holder: result.holder, since: result.since, sinceText: result.sinceText };
+    const resolved = await resolveServerPalByGuid(session, guid);
+    if (!resolved) throw new Error("GUID " + guid + " not found on " + session.environment.url);
+    const team = await readTeamLock(session, resolved.id);
+    if (team) {
+        return { locked: true, kind: "gui", byUs: sameUser(team.ownerEmail, session.username),
+                 holder: holderLabel(team), holderEmail: team.ownerEmail, since: team.since };
     }
-    if (result.heldByOther) {
-        return { locked: true, byUs: false, holder: result.holder, since: result.since, sinceText: result.sinceText };
+    if (session.lockInfo && session.lockInfo.lockGranted === true) {
+        return { locked: true, kind: "palsync", byUs: true, holder: "you (this palsync session)" };
     }
     return { locked: false };
 }
 
-module.exports = { acquireByGuid, releaseByGuid, statusByGuid, interpretLock, sinceText };
+module.exports = { acquireByGuid, releaseByGuid, statusByGuid, readTeamLock, sameUser, OVERRIDE_ENABLED };

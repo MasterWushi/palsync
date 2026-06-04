@@ -12,28 +12,58 @@ const { hashWorkspace } = require("../core/workspaceHash");
 
 function nowIso() { return new Date().toISOString(); }
 
+// High-friction override: the user must type this EXACT phrase, echoing the pal name, so it can't
+// be passed casually. (Lock-Force itself is still disabled pending verification — see core/lock.)
+function overridePhrase(palName) { return "OVERRIDE " + palName; }
+
+// Build an honest, owner-aware message for a blocked lock. Never implies "probably you" unless
+// teamInfo actually shows the owner is us.
+function blockedMessage(blocked, info, palName) {
+    if (blocked === "gui-lock-self") {
+        return "You have \"" + palName + "\" checked out in the PalBuilder GUI (since " + info.since + ").\n" +
+            "palsync can't lock it while the GUI holds it. Close/check it in there, then retry.";
+    }
+    if (blocked === "gui-lock-other") {
+        return "Locked by " + info.holder + " since " + info.since + ".\n" +
+            "Overriding may DESTROY their unsaved work.";
+    }
+    if (blocked === "override-disabled") {
+        return "Override is not enabled in this build — palsync has not verified that force-override " +
+            "safely breaks a GUI lock, and breaking one can destroy unsaved work. Close the lock in the " +
+            "PalBuilder GUI instead. (Held by " + info.holder + " since " + info.since + ".)";
+    }
+    // unknown-holder
+    return "Locked, and palsync can't determine the holder (the server did not report it). " +
+        "Check PalBuilder. Overriding may destroy another user's unsaved work.";
+}
+
+// Append the typed-OVERRIDE instructions when the user hasn't confirmed yet.
+function withOverrideGate(message, confirmOverride, palName) {
+    if (confirmOverride === overridePhrase(palName)) return message;
+    return message + "\n\nThis will NOT proceed without an explicit typed confirmation. To override, " +
+        "call again with EXACTLY:\n  confirmOverride: \"" + overridePhrase(palName) + "\"";
+}
+
 const TOOLS = [
     {
         name: "pal_status",
-        description: "Report whether the server is newer than your last pull, and the current lock holder.",
+        description: "Report whether the server is newer than your last pull, and who holds the lock (read-only).",
         inputShape: {},
         async run(ctx) {
             const live = await resolveServerPalByGuid(ctx.session, ctx.record.palGuid);
             const serverNewer = live ? drift.serverAdvanced(ctx.record.lastModifiedDate, live.lastModifiedDate) : false;
+            const st = await lock.statusByGuid(ctx.session, ctx.record.palGuid); // read-only — no lock attempt
             let lockMsg;
-            if (ctx.session.lockInfo) {
-                const i = lock.interpretLock(ctx.session.lockInfo, ctx.session.username);
-                lockMsg = i.ours ? ("held by you since " + lock.sinceText(i.since)) : ("held by " + i.holder);
-            } else {
-                lockMsg = "not held in this session";
-            }
+            if (!st.locked) lockMsg = "not locked";
+            else if (st.kind === "gui") lockMsg = (st.byUs ? "checked out by you in the PalBuilder GUI" : "locked by " + st.holder) + " since " + st.since;
+            else lockMsg = "held by this palsync session";
             const message =
                 "Pal: " + ctx.record.palName + " (" + ctx.record.palGuid + ")\n" +
                 (serverNewer ? "Server IS NEWER than your last pull — run pal_pull before pushing.\n" : "In sync with your last pull.\n") +
                 "  your marker  : " + ctx.record.lastModifiedDate + "\n" +
                 "  server marker: " + (live ? live.lastModifiedDate : "(unknown)") + "\n" +
                 "Lock: " + lockMsg;
-            return { message, serverNewer, storedMarker: ctx.record.lastModifiedDate, liveMarker: live && live.lastModifiedDate, lock: lockMsg };
+            return { message, serverNewer, storedMarker: ctx.record.lastModifiedDate, liveMarker: live && live.lastModifiedDate, lock: st };
         }
     },
     {
@@ -57,10 +87,12 @@ const TOOLS = [
     },
     {
         name: "pal_push",
-        description: "Push local changes to the server (UPDATE). Refuses if the server advanced since your last pull (drift) unless force:true.",
-        inputShape: { force: z.boolean().optional() },
-        async run(ctx, { force = false } = {}) {
-            const res = await push(ctx.session, ctx.record, ctx.workspaceDir, { force: !!force });
+        description: "Push local changes to the server (UPDATE). Refuses on drift (force:true) or if locked by another holder (typed confirmOverride).",
+        inputShape: { force: z.boolean().optional(), confirmOverride: z.string().optional() },
+        async run(ctx, { force = false, confirmOverride } = {}) {
+            const palName = ctx.record.palName;
+            const overrideLock = confirmOverride === overridePhrase(palName);
+            const res = await push(ctx.session, ctx.record, ctx.workspaceDir, { force: !!force, overrideLock });
             if (res.pushed) {
                 ctx.record.localHash = hashWorkspace(ctx.workspaceDir);
                 await ctx.persist();
@@ -83,38 +115,47 @@ const TOOLS = [
                         "Run pal_pull to reconcile, or pal_push with force:true to overwrite."
                 });
             }
-            if (res.refused === "locked-by-other") {
-                return Object.assign(res, { message: "REFUSED: pal is locked by " + res.holder + " since " + res.since + ". Not overriding." });
+            // lock-blocked refusals (gui-lock-self / gui-lock-other / override-disabled / unknown-holder)
+            if (["gui-lock-self", "gui-lock-other", "override-disabled", "unknown-holder"].includes(res.refused)) {
+                return Object.assign(res, { message: withOverrideGate("REFUSED: " + blockedMessage(res.refused, res, palName), confirmOverride, palName) });
             }
             return Object.assign(res, { message: "Push failed: " + (res.reason || res.refused || "unknown") });
         }
     },
     {
         name: "pal_lock",
-        description: "Acquire the pal lock (auto-reclaims your own stale lock; never breaks another user's).",
-        inputShape: {},
-        async run(ctx) {
-            const lk = await lock.acquireByGuid(ctx.session, ctx.record.palGuid, { force: false });
-            if (lk.acquired) return { locked: true, byUs: true, since: lk.sinceText, message: "Lock held by you since " + lk.sinceText + (lk.reclaimed ? " (reclaimed)" : "") };
-            if (lk.heldByOther) return { locked: true, byUs: false, holder: lk.holder, since: lk.sinceText, message: "Cannot lock: held by " + lk.holder + " since " + lk.sinceText + ". Not overriding." };
-            return { locked: false, message: "Lock not granted: " + (lk.reason || "unknown") };
+        description: "Acquire the pal lock. Reports the real holder (from teamInfo) when blocked; override is high-friction and typed.",
+        inputShape: { confirmOverride: z.string().optional() },
+        async run(ctx, { confirmOverride } = {}) {
+            const palName = ctx.record.palName;
+            let lk = await lock.acquireByGuid(ctx.session, ctx.record.palGuid, { force: false });
+            if (lk.acquired) return { locked: true, byUs: true, message: "Lock held by you" + (lk.reclaimed ? " (reclaimed)" : "") + "." };
+            // blocked — if the user typed the exact override phrase, attempt force (currently dormant).
+            if (confirmOverride === overridePhrase(palName)) {
+                lk = await lock.acquireByGuid(ctx.session, ctx.record.palGuid, { force: true });
+                if (lk.acquired) return { locked: true, byUs: true, forced: true, message: "Lock force-acquired." };
+            }
+            return { locked: false, blocked: lk.blocked, holder: lk.holder, since: lk.since,
+                message: withOverrideGate(blockedMessage(lk.blocked, lk, palName), confirmOverride, palName) };
         }
     },
     {
         name: "pal_unlock",
-        description: "Release the pal lock (reclaims and releases your own stale lock; refuses to break another user's).",
+        description: "Release palsync's lock. Cannot release a PalBuilder GUI checkout — that must be released in the GUI.",
         inputShape: {},
         async run(ctx) {
-            if (!ctx.session.lockInfo) {
-                // Not held in this session — try to reclaim our own stale lock, then release it.
-                const lk = await lock.acquireByGuid(ctx.session, ctx.record.palGuid, { force: false });
-                if (lk.heldByOther) return { unlocked: false, refused: "locked-by-other", holder: lk.holder, message: "Refused: lock held by " + lk.holder + ". Not breaking it." };
-                if (!lk.acquired) return { unlocked: false, message: "No lock to release." };
+            if (ctx.session.lockInfo) {
+                const rel = await lock.releaseByGuid(ctx.session, ctx.record.palGuid);
+                return { unlocked: rel.released, message: rel.released ? "Lock released." : "No lock held." };
             }
-            const rel = await lock.releaseByGuid(ctx.session, ctx.record.palGuid);
-            return { unlocked: rel.released, message: rel.released ? "Lock released." : "No lock held." };
+            const st = await lock.statusByGuid(ctx.session, ctx.record.palGuid);
+            if (st.locked && st.kind === "gui") {
+                return { unlocked: false, message: (st.byUs ? "You hold \"" + ctx.record.palName + "\" as a PalBuilder GUI checkout" : "Locked by " + st.holder) +
+                    " — release it in the PalBuilder GUI; palsync can't unlock a GUI lock." };
+            }
+            return { unlocked: false, message: "No palsync lock to release." };
         }
     }
 ];
 
-module.exports = { TOOLS };
+module.exports = { TOOLS, overridePhrase, blockedMessage };

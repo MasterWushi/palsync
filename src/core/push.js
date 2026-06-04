@@ -83,12 +83,13 @@ function normalizeValidation(resp) {
 
 // Pushes workspaceDir to the pal identified by record.palGuid. Mutates record.lastModifiedDate
 // on success. Returns a result object (never throws on drift/lock — returns a refusal).
-async function push(session, record, workspaceDir, { force = false } = {}) {
-    // 1) ensure the lock is ours (own-stale auto-reclaim); refuse if held by another user.
-    const lk = await lock.acquireByGuid(session, record.palGuid, { force: false });
+async function push(session, record, workspaceDir, { force = false, overrideLock = false } = {}) {
+    // 1) ensure the lock is ours. acquireByGuid reads the real holder from teamInfo and reports a
+    //    blocked reason (gui-lock-self / gui-lock-other / override-disabled / unknown-holder).
+    //    overrideLock only attempts Lock-Force, which is itself gated by OVERRIDE_ENABLED in lock.js.
+    const lk = await lock.acquireByGuid(session, record.palGuid, { force: !!overrideLock });
     if (!lk.acquired) {
-        if (lk.heldByOther) return { pushed: false, refused: "locked-by-other", holder: lk.holder, since: lk.sinceText };
-        return { pushed: false, refused: "no-lock", reason: lk.reason };
+        return { pushed: false, refused: lk.blocked || "no-lock", holder: lk.holder, since: lk.since };
     }
     const id = lk.resolved.id;
     const liveMarker = lk.resolved.lastModifiedDate;
