@@ -1,0 +1,25 @@
+#!/usr/bin/env node
+"use strict";
+// palsync — the terminal launcher. Logs in, selects a pal, pulls + locks + injects context +
+// registers the MCP server, then opens Claude Code in the workspace. No vscode, no env vars
+// (credentials live in the OS keychain).
+const clack = require("@clack/prompts");
+const preflight = require("../src/preflight");
+const { run } = require("../src/launcher/index");
+
+(async () => {
+    preflight.run(); // verify Node >= 18 and Claude Code on PATH before doing anything else
+    clack.intro("palsync — PalBuilder + Claude Code");
+    const result = await run({ log: (m) => clack.log.step(m) });
+    if (!result) { clack.cancel("Cancelled."); process.exit(1); }
+    clack.outro("Workspace ready at " + result.workspaceDir + " — handing off to " + result.agent.label + ".");
+    // If we launched the agent, keep the process alive until it exits so the terminal is handed over.
+    if (result.child) {
+        result.child.on("exit", (code) => process.exit(code || 0));
+    } else {
+        process.exit(0);
+    }
+})().catch(err => {
+    process.stderr.write("palsync failed: " + (err && err.stack ? err.stack : err) + "\n");
+    process.exit(1);
+});
