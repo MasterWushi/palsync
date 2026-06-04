@@ -1,6 +1,6 @@
 "use strict";
 // Lock model (verified against the live server — see investigation notes):
-//   * Team/GUI lock ("check out", lockType "teamMember") is visible read-only in getPal().teamInfo
+//   * Team/PalBuilder lock ("check out", lockType "teamMember") is visible read-only in getPal().teamInfo
 //     with the real owner profile (email/name). It BLOCKS LockPal.do (which then returns a null
 //     owner, so LockPal alone can't identify the holder).
 //   * Webstart lock (LockPal.do, what palsync uses) is NOT in teamInfo and is re-granted to the
@@ -9,9 +9,9 @@
 const { CloudPistonAPIManager } = require("../../lib/apiManager");
 const { resolveServerPalByGuid } = require("./resolve");
 
-// Force-override (Lock-Force against a team/GUI lock) is NOT yet trusted: whether Lock-Force
-// actually breaks a teamMember lock is unverified, and breaking a live GUI checkout could destroy
-// another user's unsaved work. Stays false until verified on a throwaway GUI-locked pal.
+// Force-override (Lock-Force against a team/PalBuilder lock) is NOT yet trusted: whether Lock-Force
+// actually breaks a teamMember lock is unverified, and breaking a live PalBuilder checkout could destroy
+// another user's unsaved work. Stays false until verified on a throwaway PalBuilder-locked pal.
 const OVERRIDE_ENABLED = false;
 
 function sameUser(email, username) {
@@ -19,7 +19,7 @@ function sameUser(email, username) {
 }
 
 // Read the real lock owner WITHOUT acquiring anything. getPal is read-only; teamInfo is present
-// only when a team/GUI lock is held. Returns { lockType, since, ownerEmail, ownerName } or null.
+// only when a team/PalBuilder lock is held. Returns { lockType, since, ownerEmail, ownerName } or null.
 async function readTeamLock(session, palId) {
     const gp = await CloudPistonAPIManager.getPal(session, palId);
     const ti = gp && gp.teamInfo && gp.teamInfo["com.contractpal.pal.TeamInfo"];
@@ -37,13 +37,13 @@ function holderLabel(team) {
     return (team.ownerName ? team.ownerName : "(unknown)") + (team.ownerEmail ? " (" + team.ownerEmail + ")" : "");
 }
 
-// Acquire the Webstart lock for a pal by GUID. Detects a blocking team/GUI lock first (read-only)
+// Acquire the Webstart lock for a pal by GUID. Detects a blocking team/PalBuilder lock first (read-only)
 // and reports the real owner. force only ever attempts Lock-Force when OVERRIDE_ENABLED is true.
 async function acquireByGuid(session, guid, { force = false } = {}) {
     const resolved = await resolveServerPalByGuid(session, guid);
     if (!resolved) throw new Error("GUID " + guid + " not found on " + session.environment.url);
 
-    // 1) Team/GUI lock? (read-only) — that blocks LockPal; we can name the real owner.
+    // 1) Team/PalBuilder lock? (read-only) — that blocks LockPal; we can name the real owner.
     const team = await readTeamLock(session, resolved.id);
     if (team) {
         const mine = sameUser(team.ownerEmail, session.username);
@@ -53,7 +53,7 @@ async function acquireByGuid(session, guid, { force = false } = {}) {
         }
         if (!OVERRIDE_ENABLED) {
             // Override requested (typed-OVERRIDE confirmed upstream) but the force path is not yet
-            // verified/enabled. Refuse rather than silently no-op or risk destroying GUI work.
+            // verified/enabled. Refuse rather than silently no-op or risk destroying PalBuilder work.
             return { acquired: false, blocked: "override-disabled",
                      holder: holderLabel(team), holderEmail: team.ownerEmail, since: team.since, resolved };
         }

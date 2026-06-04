@@ -15,7 +15,7 @@ const { run } = require("../src/launcher/index");
     if (!result) { clack.cancel("Cancelled."); process.exit(1); }
     clack.log.info(
         "Creatable here: pages, fragments, scripts, emails, images, styles, attachments.\n" +
-        "Workflows, documents, fonts, and datasets/dataviews must be made in the PalBuilder GUI (palsync can still edit them). See README."
+        "Workflows, documents, fonts, and datasets/dataviews must be made in PalBuilder (palsync can still edit them). See README."
     );
     clack.outro("Workspace ready at " + result.workspaceDir + " — handing off to " + result.agent.label + ".");
     // If we launched the agent, keep the process alive until it exits so the terminal is handed over.

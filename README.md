@@ -66,7 +66,7 @@ below are about **creating** new ones. (All confirmed by testing against a live 
 | Pages, Fragments, Scripts | you'll be asked **console or web** (sets `palType`) |
 | Emails, Images, Styles, Attachments | no extra metadata needed |
 
-**Create in the PalBuilder GUI first** — these are **GUI-only** to create (the server rejects creating
+**Create in PalBuilder first** — these are **PalBuilder-only** to create (the server rejects creating
 them via push, and the rejection fails the whole push). **Once they exist, palsync edits them normally:**
 
 | Type | Why |
@@ -74,9 +74,9 @@ them via push, and the rejection fails the whole push). **Once they exist, palsy
 | Workflows | unknown workflows are rejected (fixed workflow slots) |
 | Documents | require a description and valid XML content; a plain file is rejected |
 | Fonts | font creation is rejected |
-| Datasets, dataviews, data, datalists | GUI-provisioned; palsync preserves them on pull/push but never creates, recreates, or deletes them |
+| Datasets, dataviews, data, datalists | provisioned in PalBuilder; palsync preserves them on pull/push but never creates, recreates, or deletes them |
 
-If Claude is asked to create one of the GUI-only types, it will tell you to make it in PalBuilder first.
+If Claude is asked to create one of the PalBuilder-only types, it will tell you to make it in PalBuilder first.
 A safety guard in push also excludes any stray new file of an uncreatable type so it can't sink a push.
 
 ## Notes

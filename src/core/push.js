@@ -49,7 +49,7 @@ function guardUncreatableTypes(pal, workspaceDir, serverKnown) {
         if (serverKnown && Array.isArray(node)) {
             pal[t.key].entry = node.filter(e => {
                 if (known.has(e.string)) return true;
-                skipped.push({ type: t.key, file: e.string, reason: "new entry — not creatable via push (use the PalBuilder GUI)" });
+                skipped.push({ type: t.key, file: e.string, reason: "new entry — not creatable via push (use PalBuilder)" });
                 return false;
             });
         }
@@ -57,7 +57,7 @@ function guardUncreatableTypes(pal, workspaceDir, serverKnown) {
         const manifest = new Set(((pal[t.key] && pal[t.key].entry) || []).map(e => e.string));
         let files = [];
         try { files = fs.readdirSync(path.join(workspaceDir, t.folder)).filter(f => isFile(path.join(workspaceDir, t.folder, f))); } catch (e) {}
-        for (const f of files) if (!manifest.has(f) && !known.has(f)) skipped.push({ type: t.key, file: f, reason: "stray file — not pushed (use the PalBuilder GUI)" });
+        for (const f of files) if (!manifest.has(f) && !known.has(f)) skipped.push({ type: t.key, file: f, reason: "stray file — not pushed (use PalBuilder)" });
     }
     return skipped;
 }

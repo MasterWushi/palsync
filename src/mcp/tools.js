@@ -20,21 +20,21 @@ function overridePhrase(palName) { return "OVERRIDE " + palName; }
 // teamInfo actually shows the owner is us.
 function blockedMessage(blocked, info, palName) {
     if (blocked === "gui-lock-self") {
-        return "You have \"" + palName + "\" checked out in the PalBuilder GUI (since " + info.since + ").\n" +
-            "palsync can't lock it while the GUI holds it. Close/check it in there, then retry.";
+        return "This pal is locked — you have \"" + palName + "\" checked out in PalBuilder (since " + info.since + ").\n" +
+            "Unlock and close it in PalBuilder, then re-run palsync.";
     }
     if (blocked === "gui-lock-other") {
-        return "Locked by " + info.holder + " since " + info.since + ".\n" +
-            "Overriding may DESTROY their unsaved work.";
+        return "This pal is locked by " + info.holder + " (since " + info.since + ").\n" +
+            "They must unlock and close it in PalBuilder. Overriding may DESTROY their unsaved work.";
     }
     if (blocked === "override-disabled") {
         return "Override is not enabled in this build — palsync has not verified that force-override " +
-            "safely breaks a GUI lock, and breaking one can destroy unsaved work. Close the lock in the " +
-            "PalBuilder GUI instead. (Held by " + info.holder + " since " + info.since + ".)";
+            "safely breaks a PalBuilder lock, and breaking one can destroy unsaved work.\n" +
+            "Unlock and close it in PalBuilder instead. (Held by " + info.holder + " since " + info.since + ".)";
     }
     // unknown-holder
-    return "Locked, and palsync can't determine the holder (the server did not report it). " +
-        "Check PalBuilder. Overriding may destroy another user's unsaved work.";
+    return "This pal is locked and palsync can't determine the holder (the server did not report it).\n" +
+        "Unlock and close it in PalBuilder, then re-run palsync. Overriding may destroy another user's unsaved work.";
 }
 
 // Append the typed-OVERRIDE instructions when the user hasn't confirmed yet.
@@ -55,7 +55,7 @@ const TOOLS = [
             const st = await lock.statusByGuid(ctx.session, ctx.record.palGuid); // read-only — no lock attempt
             let lockMsg;
             if (!st.locked) lockMsg = "not locked";
-            else if (st.kind === "gui") lockMsg = (st.byUs ? "checked out by you in the PalBuilder GUI" : "locked by " + st.holder) + " since " + st.since;
+            else if (st.kind === "gui") lockMsg = (st.byUs ? "checked out by you in PalBuilder" : "locked by " + st.holder) + " since " + st.since;
             else lockMsg = "held by this palsync session";
             const message =
                 "Pal: " + ctx.record.palName + " (" + ctx.record.palGuid + ")\n" +
@@ -101,7 +101,7 @@ const TOOLS = [
                         ". save " + (res.pushed ? "OK" : "FAILED") + ". marker=" + res.newMarker + ". " +
                         res.validation.length + " validation note(s)." +
                         (res.skipped && res.skipped.length
-                            ? "\n⚠ Skipped — these can't be created via palsync; make them in the PalBuilder GUI:\n" +
+                            ? "\n⚠ Skipped — these can't be created via palsync; make them in PalBuilder:\n" +
                               res.skipped.map(s => "   - " + s.type + "/" + s.file + " (" + s.reason + ")").join("\n")
                             : "")
                 });
@@ -141,7 +141,7 @@ const TOOLS = [
     },
     {
         name: "pal_unlock",
-        description: "Release palsync's lock. Cannot release a PalBuilder GUI checkout — that must be released in the GUI.",
+        description: "Release palsync's lock. Cannot release a PalBuilder checkout — that must be released in PalBuilder.",
         inputShape: {},
         async run(ctx) {
             if (ctx.session.lockInfo) {
@@ -150,8 +150,8 @@ const TOOLS = [
             }
             const st = await lock.statusByGuid(ctx.session, ctx.record.palGuid);
             if (st.locked && st.kind === "gui") {
-                return { unlocked: false, message: (st.byUs ? "You hold \"" + ctx.record.palName + "\" as a PalBuilder GUI checkout" : "Locked by " + st.holder) +
-                    " — release it in the PalBuilder GUI; palsync can't unlock a GUI lock." };
+                return { unlocked: false, message: (st.byUs ? "You hold \"" + ctx.record.palName + "\" as a PalBuilder checkout" : "Locked by " + st.holder) +
+                    " — release it in PalBuilder; palsync can't unlock a PalBuilder lock." };
             }
             return { unlocked: false, message: "No palsync lock to release." };
         }

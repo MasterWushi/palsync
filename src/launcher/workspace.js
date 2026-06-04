@@ -35,17 +35,17 @@ async function setup({ session, cloudUrl, sel, workspaceDir, log = () => {} }) {
     log("pulling " + sel.pal.name + " → " + workspaceDir);
     const { resolved, written } = await pull(session, sel.pal.guid, workspaceDir);
 
-    // auto-lock (own Webstart-lock reclaim is automatic; setup never force-overrides a GUI lock)
+    // auto-lock (own Webstart-lock reclaim is automatic; setup never force-overrides a PalBuilder lock)
     log("locking pal");
     const lk = await lock.acquireByGuid(session, sel.pal.guid, { force: false });
     if (!lk.acquired) {
         if (lk.blocked === "gui-lock-self") {
-            throw new Error("You have \"" + sel.pal.name + "\" checked out in the PalBuilder GUI (since " + lk.since + "). Close/check it in there, then re-run palsync.");
+            throw new Error("This pal is locked — you have \"" + sel.pal.name + "\" checked out in PalBuilder (since " + lk.since + "). Unlock and close it in PalBuilder, then re-run palsync.");
         }
         if (lk.blocked === "gui-lock-other") {
-            throw new Error("\"" + sel.pal.name + "\" is locked by " + lk.holder + " since " + lk.since + " — cannot start a session. (Resolve in the PalBuilder GUI.)");
+            throw new Error("This pal is locked by " + lk.holder + " (since " + lk.since + ") — cannot start a session. Unlock and close it in PalBuilder.");
         }
-        throw new Error("Could not lock \"" + sel.pal.name + "\" (" + (lk.blocked || "unknown") + "). Check PalBuilder.");
+        throw new Error("Could not lock \"" + sel.pal.name + "\" (" + (lk.blocked || "unknown") + "). Unlock and close it in PalBuilder, then re-run palsync.");
     }
 
     // restore the user's CLAUDE.md (if any) before injecting, so the managed block merges in
