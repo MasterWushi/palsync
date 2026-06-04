@@ -6,9 +6,10 @@ const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const { StdioServerTransport } = require("@modelcontextprotocol/sdk/server/stdio.js");
 const { TOOLS } = require("./tools");
 const { buildContext } = require("./context");
+const pkg = require("../../package.json");
 
 function createServer(getCtx) {
-    const server = new McpServer({ name: "palsync", version: "1.0.0" });
+    const server = new McpServer({ name: "palsync", version: pkg.version });
     for (const t of TOOLS) {
         server.registerTool(
             t.name,

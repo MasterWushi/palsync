@@ -6,6 +6,15 @@
 const preflight = require("../src/preflight");
 const { loadClack } = require("../src/platform/uiPrompts");
 const { run } = require("../src/launcher/index");
+const pkg = require("../package.json");
+
+// --version / -v: print the build and exit (works regardless of Node/Claude prereqs, so QA and
+// the team can report exactly which build they're on). Handled before anything else.
+const argv = process.argv.slice(2);
+if (argv.includes("--version") || argv.includes("-v")) {
+    process.stdout.write("palsync " + pkg.version + "\n");
+    process.exit(0);
+}
 
 (async () => {
     await preflight.run(); // Node >= 18 (guide) + Claude Code (auto-install on consent) before anything else
