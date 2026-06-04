@@ -67,7 +67,10 @@ const TOOLS = [
                 return Object.assign(res, {
                     message: "Pushed " + res.filesPushed + " files" + (res.forced ? " (forced past drift)" : "") +
                         ". save " + (res.pushed ? "OK" : "FAILED") + ". marker=" + res.newMarker + ". " +
-                        res.validation.length + " validation note(s)."
+                        res.validation.length + " validation note(s)." +
+                        (res.skippedWorkflows && res.skippedWorkflows.length
+                            ? "\n⚠ Skipped (workflows can't be created via palsync — add them in the PalBuilder GUI): " + res.skippedWorkflows.join(", ")
+                            : "")
                 });
             }
             if (res.refused === "drift") {

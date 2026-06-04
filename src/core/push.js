@@ -4,11 +4,28 @@
 // lastModifiedDate -> inject from disk -> ProcessPalBuilder UPDATE -> update the stored marker.
 // Unlike the standalone palpush CLI it does NOT unlock — the MCP session holds the lock until
 // exit/idle. The save task is byte-identical to palpush's.
+const fs = require("fs");
+const path = require("path");
 const { Pal } = require("../../lib/pal");
 const { CloudPistonAPIManager } = require("../../lib/apiManager");
 const { resolveServerPalByGuid } = require("./resolve");
 const lock = require("./lock");
 const drift = require("./drift");
+
+// New workflows can't be created via push (server: "Unknown workflow" -> whole save fails).
+// Find workflow files on disk with no manifest entry. Push is manifest-driven so these are
+// already excluded from the payload; we report them so it's never a silent drop.
+function findStrayWorkflows(workspaceDir, pal) {
+    const dir = path.join(workspaceDir, "workflows");
+    let files = [];
+    try {
+        files = fs.readdirSync(dir).filter(f => {
+            try { return fs.statSync(path.join(dir, f)).isFile(); } catch (e) { return false; }
+        });
+    } catch (e) { /* no workflows dir */ }
+    const known = new Set(((pal.workflows && pal.workflows.entry) || []).map(e => e.string));
+    return files.filter(f => !known.has(f));
+}
 
 function buildSaveTask(pal) {
     return {
@@ -56,6 +73,7 @@ async function push(session, record, workspaceDir, { force = false } = {}) {
     // 3) inject from disk + save (body pal.id == lock header id, matching the extension invariant)
     const pal = await Pal.fromPath(workspaceDir);
     pal.id = id;
+    const skippedWorkflows = findStrayWorkflows(workspaceDir, pal); // excluded (manifest-driven) + reported
     const injected = await pal.injectFileContent();
     const saveResp = await CloudPistonAPIManager.savePal(session, pal, id);
     const validation = normalizeValidation(saveResp);
@@ -67,7 +85,7 @@ async function push(session, record, workspaceDir, { force = false } = {}) {
         record.lastModifiedDate = after ? after.lastModifiedDate : liveMarker;
     }
 
-    return { pushed: success, forced: !!force, filesPushed: injected.length, validation, newMarker: record.lastModifiedDate };
+    return { pushed: success, forced: !!force, filesPushed: injected.length, validation, newMarker: record.lastModifiedDate, skippedWorkflows };
 }
 
 module.exports = { push, buildSaveTask, normalizeValidation };
