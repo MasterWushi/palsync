@@ -12,6 +12,14 @@ const { hashWorkspace } = require("../core/workspaceHash");
 
 function nowIso() { return new Date().toISOString(); }
 
+// Print the FULL text of every server validation note (group/object: message), not just a count —
+// a count hides content-affecting warnings (e.g. a page with no body tag that won't save).
+function formatValidation(notes) {
+    if (!notes || !notes.length) return "No validation notes.";
+    return "Server validation notes (" + notes.length + "):\n" +
+        notes.map(v => "   - " + (v.group || "?") + "/" + (v.object || "(general)") + ": " + v.message).join("\n");
+}
+
 // High-friction override: the user must type this EXACT phrase, echoing the pal name, so it can't
 // be passed casually. (Lock-Force itself is still disabled pending verification — see core/lock.)
 function overridePhrase(palName) { return "OVERRIDE " + palName; }
@@ -98,8 +106,8 @@ const TOOLS = [
                 await ctx.persist();
                 return Object.assign(res, {
                     message: "Pushed " + res.filesPushed + " files" + (res.forced ? " (forced past drift)" : "") +
-                        ". save " + (res.pushed ? "OK" : "FAILED") + ". marker=" + res.newMarker + ". " +
-                        res.validation.length + " validation note(s)." +
+                        ". save " + (res.pushed ? "OK" : "FAILED") + ". marker=" + res.newMarker + ".\n" +
+                        formatValidation(res.validation) +
                         (res.skipped && res.skipped.length
                             ? "\n⚠ Skipped — these can't be created via palsync; make them in PalBuilder:\n" +
                               res.skipped.map(s => "   - " + s.type + "/" + s.file + " (" + s.reason + ")").join("\n")
