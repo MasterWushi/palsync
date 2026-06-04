@@ -18,7 +18,8 @@ function available() {
 async function pick(prompt) {
     const opts = available();
     if (prompt) return prompt(opts);
-    const clack = require("@clack/prompts");
+    const { loadClack } = require("../platform/uiPrompts");
+    const clack = await loadClack();
     const choice = await clack.select({
         message: "Open with which agent?",
         options: opts.map(a => ({ value: a.id, label: a.label }))

@@ -4,7 +4,7 @@
 // valid cached creds and skips the prompt entirely. No env vars, no plaintext on disk.
 //
 // Prompts are injectable (defaults use @clack/prompts) so the flow is testable headlessly.
-const clack = require("@clack/prompts");
+const { loadClack } = require("../platform/uiPrompts");
 const { authenticate } = require("../core/session");
 const keychain = require("../platform/keychain");
 
@@ -14,7 +14,7 @@ const CLOUDS = [
     { name: "Nimblewire", url: "https://secure.nimblewire.net" }
 ];
 
-function cancelGuard(value) {
+function cancelGuard(clack, value) {
     if (clack.isCancel(value)) { clack.cancel("Login cancelled."); process.exit(130); }
     return value;
 }
@@ -22,18 +22,20 @@ function cancelGuard(value) {
 // Default interactive prompts (TTY). Each returns the user's input.
 const defaultPrompts = {
     async pickCloud(clouds) {
-        const choice = cancelGuard(await clack.select({
+        const clack = await loadClack();
+        const choice = cancelGuard(clack, await clack.select({
             message: "Select cloud",
             options: [...clouds.map(c => ({ value: c.url, label: c.name + "  (" + c.url + ")" })),
                       { value: "__custom__", label: "Custom URL…" }]
         }));
         if (choice === "__custom__") {
-            return cancelGuard(await clack.text({ message: "Cloud base URL", placeholder: "https://…" }));
+            return cancelGuard(clack, await clack.text({ message: "Cloud base URL", placeholder: "https://…" }));
         }
         return choice;
     },
     async pickAccount(usernames) {
-        const choice = cancelGuard(await clack.select({
+        const clack = await loadClack();
+        const choice = cancelGuard(clack, await clack.select({
             message: "Account",
             options: [...usernames.map(u => ({ value: u, label: u + "  (cached)" })),
                       { value: "__new__", label: "Use a different account…" }]
@@ -41,10 +43,12 @@ const defaultPrompts = {
         return choice === "__new__" ? null : choice;
     },
     async askUsername() {
-        return cancelGuard(await clack.text({ message: "Username" }));
+        const clack = await loadClack();
+        return cancelGuard(clack, await clack.text({ message: "Username" }));
     },
     async askPassword(username, cloudUrl) {
-        return cancelGuard(await clack.password({ message: "Password for " + username + " @ " + cloudUrl }));
+        const clack = await loadClack();
+        return cancelGuard(clack, await clack.password({ message: "Password for " + username + " @ " + cloudUrl }));
     }
 };
 

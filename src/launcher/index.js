@@ -2,7 +2,7 @@
 // The palsync launcher: cloud → login → profile → group → pal → agent → setup → open Claude Code.
 // All interactive steps are injectable so the flow is testable headlessly; defaults use the real
 // @clack/prompts UI. autoLaunch=false stops before opening the agent (used by tests).
-const clack = require("@clack/prompts");
+const { loadClack } = require("../platform/uiPrompts");
 const { login } = require("../auth/credentials");
 const { runSelection } = require("./selection");
 const { selectionPrompts } = require("./prompts");
@@ -10,6 +10,7 @@ const agents = require("./agents");
 const workspace = require("./workspace");
 
 async function defaultChooseDir(defaultDir) {
+    const clack = await loadClack();
     const v = await clack.text({ message: "Workspace directory", initialValue: defaultDir });
     if (clack.isCancel(v) || !v) return null;
     return v;
