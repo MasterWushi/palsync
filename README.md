@@ -54,10 +54,34 @@ Now talk to Claude. Ask for a change, then say *"push it."*
 | `pal_lock` | Acquire the lock (auto-reclaims your own stale lock). |
 | `pal_unlock` | Release the lock (never breaks another user's). |
 
+## Limitations
+
+palsync syncs a pal's **code files**. **palsync can EDIT any existing file of any type** — the limits
+below are about **creating** new ones. (All confirmed by testing against a live pal.)
+
+**Create from Claude Code** (Claude writes the file + adds the manifest entry):
+
+| Type | Notes |
+|------|-------|
+| Pages, Fragments, Scripts | you'll be asked **console or web** (sets `palType`) |
+| Emails, Images, Styles, Attachments | no extra metadata needed |
+
+**Create in the PalBuilder GUI first** — these are **GUI-only** to create (the server rejects creating
+them via push, and the rejection fails the whole push). **Once they exist, palsync edits them normally:**
+
+| Type | Why |
+|------|-----|
+| Workflows | unknown workflows are rejected (fixed workflow slots) |
+| Documents | require a description and valid XML content; a plain file is rejected |
+| Fonts | font creation is rejected |
+| Datasets, dataviews, data, datalists | GUI-provisioned; palsync preserves them on pull/push but never creates, recreates, or deletes them |
+
+If Claude is asked to create one of the GUI-only types, it will tell you to make it in PalBuilder first.
+A safety guard in push also excludes any stray new file of an uncreatable type so it can't sink a push.
+
 ## Notes
 
 - **Credentials** live only in your OS keychain (macOS Keychain / Windows Credential Manager / Linux Secret Service) — never in env vars, config, git, or pal files.
-- **Datasets & dataviews** are provisioned in the PalBuilder GUI. palsync preserves them on pull/push but never creates or destroys them.
 - On headless Linux, a Secret Service provider (e.g. `gnome-keyring`) must be available for credential storage.
 
 ## License

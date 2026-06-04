@@ -12,19 +12,54 @@ const { resolveServerPalByGuid } = require("./resolve");
 const lock = require("./lock");
 const drift = require("./drift");
 
-// New workflows can't be created via push (server: "Unknown workflow" -> whole save fails).
-// Find workflow files on disk with no manifest entry. Push is manifest-driven so these are
-// already excluded from the payload; we report them so it's never a silent drop.
-function findStrayWorkflows(workspaceDir, pal) {
-    const dir = path.join(workspaceDir, "workflows");
-    let files = [];
+// Types that CANNOT be created via push: the server rejects a NEW entry of these types and the
+// rejection fails the WHOLE save transactionally (workflows: "Unknown workflow"; documents: need
+// a description + valid XML; fonts: rejected outright). Editing EXISTING ones is fine. CLAUDE.md
+// tells Claude not to create them — this is the backstop so a stray addition can't sink a push.
+const UNCREATABLE = [
+    { key: "workflows", folder: "workflows" },
+    { key: "documents", folder: "documents" },
+    { key: "fonts", folder: "fonts" }
+];
+
+function isFile(p) { try { return fs.statSync(p).isFile(); } catch (e) { return false; } }
+
+// Best-effort: the set of entry-strings the server already has, per uncreatable type. Used to tell
+// a NEW (uncreatable) entry from an existing one we may legitimately edit. Returns null on failure
+// (caller then skips stripping rather than risk dropping a valid existing entry).
+async function fetchServerKnown(session, palId) {
     try {
-        files = fs.readdirSync(dir).filter(f => {
-            try { return fs.statSync(path.join(dir, f)).isFile(); } catch (e) { return false; }
-        });
-    } catch (e) { /* no workflows dir */ }
-    const known = new Set(((pal.workflows && pal.workflows.entry) || []).map(e => e.string));
-    return files.filter(f => !known.has(f));
+        const resp = await CloudPistonAPIManager.getPal(session, palId);
+        const sp = resp && resp.pal;
+        if (!sp) return null;
+        const setOf = (k) => new Set((((sp[k] && sp[k].entry)) ? (Array.isArray(sp[k].entry) ? sp[k].entry : [sp[k].entry]) : []).map(e => e.string));
+        return { workflows: setOf("workflows"), documents: setOf("documents"), fonts: setOf("fonts") };
+    } catch (e) { return null; }
+}
+
+// Strip NEW entries of uncreatable types from the payload (keep server-known ones so edits work),
+// and report stray on-disk files of those types. Mutates pal. Returns [{type, file, reason}].
+function guardUncreatableTypes(pal, workspaceDir, serverKnown) {
+    const skipped = [];
+    for (const t of UNCREATABLE) {
+        const known = (serverKnown && serverKnown[t.key]) || new Set();
+        const node = pal[t.key] && pal[t.key].entry;
+        // (1) strip new entries (only when we have a baseline; otherwise leave them and let the
+        //     server's transactional rejection protect us — never risk dropping a valid entry)
+        if (serverKnown && Array.isArray(node)) {
+            pal[t.key].entry = node.filter(e => {
+                if (known.has(e.string)) return true;
+                skipped.push({ type: t.key, file: e.string, reason: "new entry — not creatable via push (use the PalBuilder GUI)" });
+                return false;
+            });
+        }
+        // (2) report stray files on disk with no manifest entry (already excluded; informational)
+        const manifest = new Set(((pal[t.key] && pal[t.key].entry) || []).map(e => e.string));
+        let files = [];
+        try { files = fs.readdirSync(path.join(workspaceDir, t.folder)).filter(f => isFile(path.join(workspaceDir, t.folder, f))); } catch (e) {}
+        for (const f of files) if (!manifest.has(f) && !known.has(f)) skipped.push({ type: t.key, file: f, reason: "stray file — not pushed (use the PalBuilder GUI)" });
+    }
+    return skipped;
 }
 
 function buildSaveTask(pal) {
@@ -73,7 +108,10 @@ async function push(session, record, workspaceDir, { force = false } = {}) {
     // 3) inject from disk + save (body pal.id == lock header id, matching the extension invariant)
     const pal = await Pal.fromPath(workspaceDir);
     pal.id = id;
-    const skippedWorkflows = findStrayWorkflows(workspaceDir, pal); // excluded (manifest-driven) + reported
+    // Backstop: strip any NEW entry of an uncreatable type (workflows/documents/fonts) so it can't
+    // sink the whole push; report stray files of those types. Creatable types are never touched.
+    const serverKnown = await fetchServerKnown(session, id);
+    const skipped = guardUncreatableTypes(pal, workspaceDir, serverKnown);
     const injected = await pal.injectFileContent();
     const saveResp = await CloudPistonAPIManager.savePal(session, pal, id);
     const validation = normalizeValidation(saveResp);
@@ -85,7 +123,7 @@ async function push(session, record, workspaceDir, { force = false } = {}) {
         record.lastModifiedDate = after ? after.lastModifiedDate : liveMarker;
     }
 
-    return { pushed: success, forced: !!force, filesPushed: injected.length, validation, newMarker: record.lastModifiedDate, skippedWorkflows };
+    return { pushed: success, forced: !!force, filesPushed: injected.length, validation, newMarker: record.lastModifiedDate, skipped };
 }
 
 module.exports = { push, buildSaveTask, normalizeValidation };

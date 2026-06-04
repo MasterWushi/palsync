@@ -68,8 +68,9 @@ const TOOLS = [
                     message: "Pushed " + res.filesPushed + " files" + (res.forced ? " (forced past drift)" : "") +
                         ". save " + (res.pushed ? "OK" : "FAILED") + ". marker=" + res.newMarker + ". " +
                         res.validation.length + " validation note(s)." +
-                        (res.skippedWorkflows && res.skippedWorkflows.length
-                            ? "\n⚠ Skipped (workflows can't be created via palsync — add them in the PalBuilder GUI): " + res.skippedWorkflows.join(", ")
+                        (res.skipped && res.skipped.length
+                            ? "\n⚠ Skipped — these can't be created via palsync; make them in the PalBuilder GUI:\n" +
+                              res.skipped.map(s => "   - " + s.type + "/" + s.file + " (" + s.reason + ")").join("\n")
                             : "")
                 });
             }
