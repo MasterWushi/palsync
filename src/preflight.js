@@ -1,10 +1,16 @@
 "use strict";
-// Startup preflight for the palsync launcher. Verifies the environment BEFORE any login or
-// hand-off, so a missing prerequisite produces a clear, actionable message instead of a cryptic
-// failure at the Claude Code launch. Pure packaging/UX — touches no launcher/MCP/sync logic.
+// Startup preflight for the palsync launcher. Two onboarding checks, intentionally asymmetric:
+//   * Claude Code is an npm package palsync can safely install into the user's GLOBAL packages,
+//     so on consent we auto-install it (npm install -g @anthropic-ai/claude-code).
+//   * Node is the system runtime palsync itself runs on. Auto-upgrading it needs elevated perms,
+//     can break the user's other projects, and could swap the runtime out mid-run — so we only
+//     GUIDE (detect how Node was installed, show the exact command), never auto-run it.
+// Cross-platform: which/where for PATH, shell:true for npm on Windows, no OS-specific assumptions.
 const { spawnSync } = require("child_process");
+const readline = require("readline");
 
 const MIN_NODE_MAJOR = 18;
+const REC_NODE = "20"; // recommended LTS major to upgrade to
 
 function nodeMajor() {
     return parseInt(process.versions.node.split(".")[0], 10);
@@ -13,45 +19,119 @@ function nodeMajor() {
 // Cross-platform "is this command on PATH?": `where` on Windows, `which` elsewhere.
 function commandOnPath(name) {
     const probe = process.platform === "win32" ? "where" : "which";
-    try {
-        return spawnSync(probe, [name], { stdio: "ignore" }).status === 0;
-    } catch (e) {
-        return false;
+    try { return spawnSync(probe, [name], { stdio: "ignore" }).status === 0; }
+    catch (e) { return false; }
+}
+
+// ---- Node (guide only) ---------------------------------------------------------------------
+
+// Best-effort detection of how Node was installed, from env + the running binary's path.
+function detectNodeInstallMethod(opts = {}) {
+    const env = opts.env || process.env;
+    const p = (opts.execPath || process.execPath).replace(/\\/g, "/").toLowerCase();
+    if (env.VOLTA_HOME || p.includes("/.volta/")) return "volta";
+    if (env.FNM_DIR || p.includes("/.fnm/") || p.includes("fnm_multishells")) return "fnm";
+    if (env.NVM_DIR || p.includes("/.nvm/")) return "nvm";
+    if (p.includes("/homebrew/") || p.includes("/cellar/") || p.includes("/.linuxbrew/")) return "homebrew";
+    return "system";
+}
+
+function nodeUpgradeCommand(method) {
+    switch (method) {
+        case "nvm": return "nvm install " + REC_NODE + " && nvm alias default " + REC_NODE;
+        case "fnm": return "fnm install " + REC_NODE + " && fnm default " + REC_NODE;
+        case "volta": return "volta install node@" + REC_NODE;
+        case "homebrew": return "brew install node@" + REC_NODE + " && brew link --overwrite node@" + REC_NODE;
+        default: return null; // system / unknown -> nodejs.org only
     }
 }
 
-function nodeMessage() {
-    return [
+function nodeMessage(method) {
+    const cmd = nodeUpgradeCommand(method);
+    const lines = [
         "✖ palsync needs Node.js " + MIN_NODE_MAJOR + " or newer (you have " + process.version + ").",
-        "  Install the latest LTS from https://nodejs.org/ (or via nvm / fnm / volta), then re-run palsync."
-    ].join("\n");
+        "  Detected Node install: " + method
+    ];
+    if (cmd) lines.push("  Upgrade with:  " + cmd);
+    lines.push("  Or download the latest LTS from https://nodejs.org/");
+    lines.push("  palsync will NOT change your Node version automatically — it can break other projects");
+    lines.push("  and needs your permission. Run the command above yourself, then re-run palsync.");
+    return lines.join("\n");
 }
 
-function claudeMessage() {
+// ---- Claude Code (auto-install on consent) -------------------------------------------------
+
+function askYesNo(question) {
+    return new Promise((resolve) => {
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        rl.question(question, (ans) => { rl.close(); resolve(/^y(es)?$/i.test(String(ans).trim())); });
+    });
+}
+
+function installClaudeCode() {
+    process.stdout.write("\nInstalling Claude Code:  npm install -g @anthropic-ai/claude-code\n\n");
+    const useShell = process.platform === "win32"; // resolve npm.cmd on Windows
+    const r = spawnSync("npm", ["install", "-g", "@anthropic-ai/claude-code"], { stdio: "inherit", shell: useShell });
+    return { ok: r.status === 0, status: r.status, error: r.error };
+}
+
+function manualClaudeInstructions() {
     return [
-        "✖ Claude Code (the `claude` command) was not found on your PATH.",
-        "  palsync hands off to Claude Code after setup, so it is required.",
-        "  Install it:  npm install -g @anthropic-ai/claude-code",
-        "  Docs:        https://docs.claude.com/en/docs/claude-code",
-        "  Then make sure `claude` runs in your terminal and re-run palsync."
+        "Install Claude Code, then re-run palsync:",
+        "  npm install -g @anthropic-ai/claude-code",
+        "  Docs: https://docs.claude.com/en/docs/claude-code"
     ].join("\n");
 }
 
-// Returns an array of problem messages (empty = all good).
-function checkProblems() {
-    const problems = [];
-    if (nodeMajor() < MIN_NODE_MAJOR) problems.push(nodeMessage());
-    if (!commandOnPath("claude")) problems.push(claudeMessage());
-    return problems;
+function pathFixGuidance() {
+    const binHint = process.platform === "win32"
+        ? "Add your npm global folder (run `npm prefix -g`) to PATH via System Environment Variables."
+        : "Add it to PATH in your shell profile (~/.zshrc or ~/.bashrc):\n    export PATH=\"$(npm prefix -g)/bin:$PATH\"";
+    return [
+        "Claude Code was installed, but the `claude` command isn't on your PATH.",
+        "Find your npm global bin:  npm prefix -g",
+        binHint,
+        "Then open a new terminal and re-run palsync."
+    ].join("\n");
 }
 
-// Run the preflight; on failure print all problems and exit cleanly (code 1).
-function run() {
-    const problems = checkProblems();
-    if (problems.length > 0) {
-        process.stderr.write("\npalsync can't start — please fix the following:\n\n" + problems.join("\n\n") + "\n\n");
+// Ensure `claude` is available; auto-install on consent. Injectable bits make it testable.
+// Returns { ok, reason }.
+async function ensureClaudeCode({ prompt = askYesNo, installer = installClaudeCode, onPath = commandOnPath } = {}) {
+    if (onPath("claude")) return { ok: true, reason: "present" };
+
+    const yes = await prompt("Claude Code is required but not installed. Install it now? (y/n) ");
+    if (!yes) {
+        process.stderr.write("\n" + manualClaudeInstructions() + "\n");
+        return { ok: false, reason: "declined" };
+    }
+
+    const res = installer();
+    if (!res.ok) {
+        process.stderr.write("\nThe install didn't complete (e.g. permissions). " + manualClaudeInstructions() + "\n");
+        return { ok: false, reason: "install-failed" };
+    }
+    if (onPath("claude")) return { ok: true, reason: "installed" };
+
+    process.stderr.write("\n" + pathFixGuidance() + "\n");
+    return { ok: false, reason: "not-on-path" };
+}
+
+// ---- Entry ---------------------------------------------------------------------------------
+
+async function run() {
+    // 1) Node: guide only, never auto-run. (Node entirely missing is handled by the shell/npm
+    //    before palsync can start — the README states the Node 18+ prerequisite.)
+    if (nodeMajor() < MIN_NODE_MAJOR) {
+        process.stderr.write("\n" + nodeMessage(detectNodeInstallMethod()) + "\n\n");
         process.exit(1);
     }
+    // 2) Claude Code: auto-install on consent.
+    const claude = await ensureClaudeCode();
+    if (!claude.ok) process.exit(1);
 }
 
-module.exports = { run, checkProblems, nodeMessage, claudeMessage, commandOnPath, MIN_NODE_MAJOR };
+module.exports = {
+    run, ensureClaudeCode, detectNodeInstallMethod, nodeUpgradeCommand, nodeMessage,
+    manualClaudeInstructions, pathFixGuidance, commandOnPath, MIN_NODE_MAJOR
+};

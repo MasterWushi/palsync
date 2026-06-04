@@ -8,7 +8,7 @@ const { loadClack } = require("../src/platform/uiPrompts");
 const { run } = require("../src/launcher/index");
 
 (async () => {
-    preflight.run(); // verify Node >= 18 and Claude Code on PATH before doing anything else
+    await preflight.run(); // Node >= 18 (guide) + Claude Code (auto-install on consent) before anything else
     const clack = await loadClack(); // @clack/prompts is ESM-only; dynamic import works on Node 18+
     clack.intro("palsync — PalBuilder + Claude Code");
     const result = await run({ log: (m) => clack.log.step(m) });

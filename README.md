@@ -25,11 +25,11 @@ and `palpush`, a headless deploy CLI). **No build step** — the OS-keychain dep
 
 ## Prerequisites
 
-- **Node.js 18+** — https://nodejs.org/
-- **Claude Code** on your PATH — `npm install -g @anthropic-ai/claude-code` (docs: https://docs.claude.com/en/docs/claude-code)
+- **Node.js 18 or newer is required up front** — install it first from https://nodejs.org/ (or your version manager). palsync runs on Node, so it can't install or upgrade Node for you: if your Node is too old it shows the exact upgrade command for your setup (nvm/fnm/volta/Homebrew) but **never changes your Node version automatically** — that's yours to run, since it can affect your other projects.
+- **Claude Code** — if it's not installed, palsync offers to install it for you (`npm install -g @anthropic-ai/claude-code`) on a yes/no prompt; or install it yourself (docs: https://docs.claude.com/en/docs/claude-code).
 - **A CloudPiston login** (username + password) for your cloud.
 
-palsync checks Node and Claude Code at startup and tells you exactly what to install if either is missing.
+palsync checks both at startup: it guides you to upgrade Node if needed, and offers to auto-install Claude Code.
 
 ## First run
 
