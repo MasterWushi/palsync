@@ -107,11 +107,15 @@ async function readIfExists(p) {
 // Inject everything into workspaceDir. Returns a summary of what was written.
 async function inject(workspaceDir, { palName } = {}) {
     // 1) skills (palsync-owned)
-    const skills = ["palbuilder-frontend", "palbuilder-backend"];
+    const skills = ["palbuilder-frontend", "palbuilder-backend", "design-core"];
     for (const s of skills) {
         await copyFile(path.join(BUNDLE_DIR, "skills", s, "SKILL.md"),
                        path.join(workspaceDir, ".claude", "skills", s, "SKILL.md"));
     }
+    // design-core ships a companion reference-theme.css the skill tells the agent to copy
+    // into the pal's Styles/ — without it the skill references a file that isn't there.
+    await copyFile(path.join(BUNDLE_DIR, "skills", "design-core", "reference-theme.css"),
+                   path.join(workspaceDir, ".claude", "skills", "design-core", "reference-theme.css"));
     // 2) CLAUDE.palsync.md (palsync-owned pal rules, written fresh)
     await copyFile(path.join(BUNDLE_DIR, "CLAUDE.md"), path.join(workspaceDir, "CLAUDE.palsync.md"));
 
