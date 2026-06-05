@@ -160,9 +160,13 @@ or a token.)*
 
 ## 6. Self-audit — run this after generating any UI
 
-*(Technique B6: agents catch most of their own violations when asked to list them.)* After
-producing markup/CSS, **write out the answers to each item.** If any list is non-empty,
-fix it before finishing.
+*(Technique B6: agents catch most of their own violations when asked to list them.)*
+
+**This is mandatory and explicit. After producing any markup/CSS, write out your answer to
+all 10 items below, numbered, item by item — actually print each item with its finding.** Do
+**not** summarize ("audit passed"), do **not** merely cite the section, and do **not** skip
+items you assume are fine. Quote the offending line for any non-empty finding. If any item
+is non-empty, fix it, then re-run the audit. Only finish when every item is clean.
 
 1. **Raw colors:** list every hex / `rgb` / `hsl` / named color you emitted outside
    `theme.css`. → must be **empty**.
