@@ -71,6 +71,7 @@ authoritative list is in `reference-theme.css`. Summary:
 | **Elevation** | `--shadow-sm` · `--shadow-md` |
 | **Motion** | `--motion-fast/base/slow` · `--ease-standard` · `--ease-emphasis` |
 | **Controls** | `--control-height-sm/md/lg` |
+| **Inline-size scale** | `--size-xs/sm/md/lg` (width caps: menus, toasts, forms, empty states) |
 | **State / layering** | `--opacity-disabled` · `--layer-dropdown/modal/toast` |
 
 Light/dark is automatic: the recipes reference these names, and `theme.css` swaps the
@@ -92,7 +93,11 @@ output on its own.** *(Technique B1.)*
 
 **What this rule does NOT ban** (these are structure, not design values, and are fine):
 layout primitives — `0`, `100%`, `1fr`, `auto`, `50%`, unitless `line-height` multipliers,
-`flex`/`grid` track values, and SVG icon geometry (an icon's internal `viewBox`/coords).
+`flex`/`grid` track values, scalar multipliers inside `calc()` (`calc(-1 * var(--border-thin))`),
+and SVG icon geometry (an icon's internal `viewBox`/coords). **Media/container-query
+breakpoints** are also exempt — CSS forbids `var()` inside `@media`/`@container` conditions, so
+the breakpoint literals are unavoidable; use only the documented set in `theme.css`
+(`sm: 40rem`, `md: 64rem`, `lg: 80rem`).
 
 **Inline `style=` in markup** is only for *wiring* tokens, never for raw values:
 
@@ -256,9 +261,10 @@ A finite library of known-good pieces. *(Technique B5: assemble from these, don'
 improvise. Technique B7: rules + real examples.)* Every recipe is token-only, themes
 light/dark automatically, and ships its focus/keyboard/ARIA story.
 
-The **four core recipes** below are complete and are the *pattern* for the rest. The
-remaining components are scaffolded as stubs at the end — fill them next pass to this same
-standard.
+All twelve recipes below are complete and built to the same standard: PalBuilder-native HTML
++ token-only CSS + automatic light/dark + a focus/keyboard/ARIA story + a correct example.
+9.1–9.4 (button, field, card, modal) are the canonical pattern; 9.5–9.12 (table, nav, badge,
+form layout, select, tabs, toast/alert, empty state) follow it.
 
 ---
 
@@ -638,38 +644,623 @@ dialog carries `aria-labelledby` (and whether it exposes a hook to point at our 
 
 ---
 
-### 9.5 Remaining components — scaffold (fill next pass to the standard above)
+### 9.5 Table
 
-Each stub names the intent, the key tokens, and the non-negotiable a11y story. Build to the
-same completeness as 9.1–9.4: PalBuilder-native HTML + token-only CSS + light/dark via
-tokens + focus/keyboard/ARIA + a correct example.
+Scannable rows of data. `c:list` renders the body with **direct EL** (`${row.col}` — never
+`.getValue(...)`). Hairline rows, sticky header for long tables, comfortable by default with
+a `--dense` modifier for enterprise data grids. Server-side sort via `c:a`.
 
-- **Table** — scannable data; denser than marketing surfaces. Tokens: `--color-border`
-  row hairlines, `--space-3` cell padding, `--text-sm`, sticky header on `--color-surface-2`.
-  A11y: `<table>` + `<caption>`, `<th scope="col|row">`, `aria-sort` on sortable headers,
-  zebra optional via `--color-surface-2`. (Enterprise density — see `design-enterprise`.)
-- **Nav / navbar** — primary navigation. Tokens: `--color-surface` bar, `--color-border`
-  divider, accent for the active item (text/underline, not a second CTA). A11y: `<nav>`
-  with `aria-label`, `aria-current="page"` on the active link, keyboard order.
-- **Badge / status pill** — status for *meaning*. Tokens: `--color-*-bg` fill +
-  matching `--color-*` text, `--radius-pill`, `--text-xs`, `--space-1`/`--space-2`. A11y:
-  never color alone — include the text label (and/or icon).
-- **Form layout** — field groups, two-column on wide, single-column on narrow. Tokens:
-  `--space-5` between groups, `--space-2` label↔control. A11y: `<fieldset>`/`<legend>` for
-  grouped inputs; logical order; visible required indication beyond color.
-- **Dropdown / select (custom)** — when native `<select>` won't do. Tokens: `--shadow-md`
-  menu on `--color-surface`, `--layer-dropdown`, `--radius-md`. A11y: `aria-expanded`,
-  `role="listbox"`/`option`, full keyboard (arrows/Enter/Esc), focus return. Light JS,
-  external `.js`, manual init (no `DOMContentLoaded`).
-- **Tabs** — switch views in place. Tokens: accent underline on the active tab,
-  `--color-text-muted` inactive, `--border-thin` track. A11y: `role="tablist"/"tab"/
-  "tabpanel"`, `aria-selected`, arrow-key navigation, `aria-controls`.
-- **Toast / alert** — transient async feedback. Tokens: `--color-*-bg`/`--color-*`,
-  `--shadow-md`, `--layer-toast`, `--radius-md`. A11y: `role="status"`/`"alert"` +
-  `aria-live`; never *only* a color; dismissible by keyboard; respects reduced motion.
-- **Empty state** — the "designed not defaulted" moment. Tokens: `--color-text-muted`
-  copy, `--space-6` padding, one primary CTA. A11y: meaningful heading + one clear next
-  action; decorative illustration `aria-hidden`.
+**CSS:**
+
+```css
+.table-wrap { inline-size: 100%; overflow-x: auto; }   /* horizontal scroll on narrow */
+.table {
+    inline-size: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+    color: var(--color-text);
+}
+.table caption {
+    text-align: start;
+    padding-block: var(--space-2);
+    color: var(--color-text-muted);
+}
+.table th,
+.table td {
+    padding-inline: var(--space-4);
+    padding-block: var(--space-3);
+    text-align: start;
+    border-block-end: var(--border-thin) solid var(--color-border);
+}
+.table thead th {
+    position: sticky;
+    inset-block-start: 0;
+    background: var(--color-surface-2);
+    font-weight: var(--weight-semibold);
+    white-space: nowrap;
+}
+.table tbody tr {
+    transition: background-color var(--motion-fast) var(--ease-standard);
+    &:hover { background: var(--color-surface-2); }
+    &:focus-within { background: var(--color-surface-2); }
+}
+.table .is-numeric { text-align: end; font-variant-numeric: tabular-nums; }
+.table--dense th,
+.table--dense td { padding-inline: var(--space-3); padding-block: var(--space-2); }
+
+/* sortable-header action (a c:a styled as a quiet button) */
+.table__sort {
+    display: inline-flex; align-items: center; gap: var(--space-1);
+    color: inherit; font: inherit; font-weight: var(--weight-semibold); text-decoration: none;
+    &:hover { color: var(--color-accent); }
+    &:focus-visible { outline: var(--border-thick) solid var(--color-focus); outline-offset: var(--border-thin); }
+}
+```
+
+**Example:**
+
+```html
+<div class="table-wrap" role="region" aria-label="Clients" tabindex="0">
+    <table class="table">
+        <caption>Client SEO checklist progress</caption>
+        <thead>
+            <tr>
+                <th scope="col"><c:a action="getClients?sort=name" class="table__sort">Client</c:a></th>
+                <th scope="col">Status</th>
+                <th scope="col" class="is-numeric" aria-sort="descending">
+                    <c:a action="getClients?sort=progress" class="table__sort">Complete</c:a>
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            <c:list name="clients" id="client">
+                <tr>
+                    <th scope="row">${client.name}</th>
+                    <td>
+                        <span class="badge badge--success">
+                            <span class="badge__dot" aria-hidden="true"></span> Active
+                        </span>
+                    </td>
+                    <td class="is-numeric">${client.percentComplete}%</td>
+                </tr>
+            </c:list>
+        </tbody>
+    </table>
+</div>
+```
+
+**A11y:** `<table>` + `<caption>`; `<th scope="col">` / `scope="row">`; `aria-sort` reflects
+the current sort; sortable headers are real `c:a` actions (keyboard-operable, server-side).
+The scroll container is a focusable labelled `region` (`tabindex="0"`) so keyboard users can
+pan wide tables. Status uses a badge (text + dot), never color alone. Use `--dense` for
+enterprise data grids (see `design-enterprise`).
+
+---
+
+### 9.6 Nav / navbar
+
+Primary navigation using the PalBuilder `workflow=` + active-class `c:a` idiom: a `c:set`
+computes the active class per item; the accent marks the current item (underline), never a
+second CTA.
+
+> **Tested-ARIA note:** `aria-current` is **not** in `c:a`'s documented attribute set, so —
+> like `aria-*` on `c:field` — it's unsupported passthrough and would draw a "not allowed in
+> this context" note. Convey the current item with the visual active state **plus** a
+> visually-hidden "(current)" cue via `c:if`, not with `aria-current` on `c:a`.
+
+**CSS:**
+
+```css
+/* shared utility — visually hidden, screen-reader available.
+   The fixed 1px/-1px values are an a11y mechanism (structural), not design values (§3). */
+.sr-only {
+    position: absolute;
+    width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+    overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+.nav {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding-inline: var(--space-4);
+    background: var(--color-surface);
+    border-block-end: var(--border-thin) solid var(--color-border);
+}
+.nav__item {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: var(--control-height-lg);
+    padding-inline: var(--space-3);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    color: var(--color-text-muted);
+    text-decoration: none;
+    border-block-end: var(--border-thick) solid transparent;
+    transition: color var(--motion-fast) var(--ease-standard),
+                border-color var(--motion-fast) var(--ease-standard);
+    &:hover { color: var(--color-text); }
+    &:focus-visible { outline: var(--border-thick) solid var(--color-focus); outline-offset: calc(-1 * var(--border-thick)); }
+}
+.nav__item.is-active {
+    color: var(--color-text);
+    border-block-end-color: var(--color-accent);
+}
+```
+
+**Example:**
+
+```html
+<c:set name="dashActive"    test="${active eq 'dashboard'}" true="is-active" false="" />
+<c:set name="clientsActive" test="${active eq 'clients'}"   true="is-active" false="" />
+
+<nav class="nav" aria-label="Primary">
+    <c:a action="getDashboard" workflow="console" class="nav__item ${dashActive}">Dashboard</c:a>
+    <c:a action="getClients" workflow="console" class="nav__item ${clientsActive}">Clients<c:if test="${active eq 'clients'}"><span class="sr-only"> (current page)</span></c:if></c:a>
+</nav>
+```
+
+**A11y:** `<nav aria-label="Primary">`; current item conveyed by the accent underline **and**
+a visually-hidden "(current page)" string (since `aria-current` on `c:a` is unsupported);
+links are real `c:a` (keyboard order free); focus ring inset so it isn't clipped by the bar.
+
+---
+
+### 9.7 Badge / status pill
+
+Status for *meaning* — **never color alone** (§5). Always a text label, plus a dot for a
+second non-color cue. Background = the status `-bg` tint; text + dot = the status color.
+
+**CSS:**
+
+```css
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding-inline: var(--space-2);
+    padding-block: var(--space-1);
+    border-radius: var(--radius-pill);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+    line-height: var(--leading-tight);
+    white-space: nowrap;
+}
+.badge__dot {
+    inline-size: var(--space-2);
+    block-size: var(--space-2);
+    border-radius: var(--radius-pill);
+    background: currentColor;
+    flex: none;
+}
+.badge--neutral { background: var(--color-surface-2);  color: var(--color-text-muted); }
+.badge--success { background: var(--color-success-bg); color: var(--color-success); }
+.badge--warning { background: var(--color-warning-bg); color: var(--color-warning); }
+.badge--danger  { background: var(--color-danger-bg);  color: var(--color-danger); }
+.badge--info    { background: var(--color-info-bg);    color: var(--color-info); }
+```
+
+**Example:**
+
+```html
+<span class="badge badge--success">
+    <span class="badge__dot" aria-hidden="true"></span> Active
+</span>
+<span class="badge badge--warning">
+    <span class="badge__dot" aria-hidden="true"></span> Pending review
+</span>
+```
+
+**A11y:** the text label carries the meaning (a screen reader reads "Active"); the dot is
+`aria-hidden` decoration and a second non-color cue; status text on its `-bg` token is tuned
+to ≥ 4.5:1 in `reference-theme.css` — verify if you retint.
+
+---
+
+### 9.8 Form layout
+
+Groups fields with consistent rhythm: `<fieldset>`/`<legend>` per related group, one column
+that becomes two on wide viewports, a right-aligned action row. Composes the §9.2 field.
+
+**CSS:**
+
+```css
+.form { display: flex; flex-direction: column; gap: var(--space-6); max-inline-size: var(--size-md); }
+.form__group {
+    display: flex; flex-direction: column; gap: var(--space-4);
+    margin: 0; padding: 0; border: 0;          /* reset fieldset */
+}
+.form__legend {
+    padding: 0;
+    font-size: var(--text-base);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text);
+}
+.form__grid { display: grid; grid-template-columns: 1fr; gap: var(--space-4); }
+@media (min-width: 40rem) {                     /* breakpoint convention — see theme.css */
+    .form__grid--two { grid-template-columns: 1fr 1fr; }
+}
+.form__actions {
+    display: flex; justify-content: flex-end; gap: var(--space-2);
+    padding-block-start: var(--space-4);
+    border-block-start: var(--border-thin) solid var(--color-border);
+}
+.field__required { color: var(--color-danger); }
+```
+
+**Example:**
+
+```html
+<form>
+    <fieldset class="form__group">
+        <legend class="form__legend">Contact</legend>
+        <div class="form__grid form__grid--two">
+            <label class="field">
+                <span class="field__label">First name</span>
+                <c:field type="text" name="firstName" class="field__input" value="${firstName}" required="true" />
+            </label>
+            <label class="field">
+                <span class="field__label">Last name</span>
+                <c:field type="text" name="lastName" class="field__input" value="${lastName}" required="true" />
+            </label>
+        </div>
+        <label class="field">
+            <span class="field__label">Email <span class="field__required" aria-hidden="true">*</span></span>
+            <c:field type="email" name="email" class="field__input" value="${email}" required="true" />
+        </label>
+    </fieldset>
+    <div class="form__actions">
+        <button type="button" class="btn btn--ghost" onclick="hideModal()">Cancel</button>
+        <c:a action="saveContact" ajax-target="feedback" class="btn btn--primary">Save</c:a>
+    </div>
+</form>
+```
+
+**A11y:** related inputs grouped in `<fieldset>` + `<legend>`; every control wrapped by its
+`<label>`; required conveyed by the native `required` (announced by AT) **and** a visible
+`*` — the `*` is `aria-hidden` so it isn't read twice; logical source order; one primary CTA.
+
+---
+
+### 9.9 Dropdown / select
+
+**Default to a native `<select>`** with `c:field type="option"` (the tested form pattern) —
+it is keyboard- and screen-reader-accessible for free. Style the box with the field tokens
+and supply a token-clean caret (a positioned SVG using `currentColor`, so no raw color in a
+data URI). A custom JS listbox is a last resort (note below).
+
+**CSS:**
+
+```css
+.select { display: flex; flex-direction: column; gap: var(--space-2); }
+.select__field { position: relative; }
+.select__control {
+    appearance: none;
+    -webkit-appearance: none;
+    inline-size: 100%;
+    min-block-size: var(--control-height-md);
+    padding-inline: var(--space-3) var(--space-7);   /* room for the caret */
+    padding-block: var(--space-2);
+    font-family: var(--font-body);
+    font-size: var(--text-base);
+    color: var(--color-text);
+    background: var(--color-surface);
+    border: var(--border-thin) solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    transition: border-color var(--motion-fast) var(--ease-standard),
+                box-shadow var(--motion-fast) var(--ease-standard);
+    &:focus-visible {
+        outline: none;
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 var(--border-thick) var(--color-focus);
+    }
+    &:disabled { background: var(--color-surface-2); color: var(--color-text-muted); cursor: not-allowed; }
+}
+.select__caret {
+    position: absolute;
+    inset-inline-end: var(--space-3);
+    inset-block: 0;
+    display: flex; align-items: center;
+    color: var(--color-text-subtle);
+    pointer-events: none;
+}
+```
+
+**Example:**
+
+```html
+<label class="select">
+    <span class="field__label">Status</span>
+    <span class="select__field">
+        <select name="status" class="select__control">
+            <c:field type="option" value="active"   name="Active"   selected="${status eq 'active'}"></c:field>
+            <c:field type="option" value="paused"   name="Paused"   selected="${status eq 'paused'}"></c:field>
+            <c:field type="option" value="archived" name="Archived" selected="${status eq 'archived'}"></c:field>
+        </select>
+        <span class="select__caret" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 16 16" focusable="false">
+                <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"
+                      stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+        </span>
+    </span>
+</label>
+```
+
+**A11y:** the native `<select>` is fully accessible by default; the label wraps it; the caret
+is `aria-hidden` decoration; focus ring on the control.
+**Custom listbox (last resort only):** if you genuinely need rich options or async search,
+build a `role="listbox"`/`option` widget with `aria-expanded`, full arrow/Enter/Esc keyboard
+handling and focus return, on `--color-surface` + `--shadow-md` + `--layer-dropdown` and
+`min-inline-size: var(--size-sm)`, in an external `.js` module (manual init, no
+`DOMContentLoaded`). Prefer the native control above.
+
+---
+
+### 9.10 Tabs
+
+Switch views in place. Light JS lives in an **external `.js`** (the `${}`/EL reason), written
+as a module, initialized directly (AJAX-loaded fragments don't fire `DOMContentLoaded`).
+
+**CSS:**
+
+```css
+.tabs__list {
+    display: flex;
+    gap: var(--space-1);
+    border-block-end: var(--border-thin) solid var(--color-border);
+}
+.tabs__tab {
+    display: inline-flex; align-items: center;
+    min-block-size: var(--control-height-md);
+    padding-inline: var(--space-4);
+    font-size: var(--text-sm); font-weight: var(--weight-medium);
+    color: var(--color-text-muted);
+    background: none; border: none; cursor: pointer;
+    border-block-end: var(--border-thick) solid transparent;
+    margin-block-end: calc(-1 * var(--border-thin));   /* sit on the list hairline */
+    transition: color var(--motion-fast) var(--ease-standard),
+                border-color var(--motion-fast) var(--ease-standard);
+    &:hover { color: var(--color-text); }
+    &:focus-visible { outline: var(--border-thick) solid var(--color-focus); outline-offset: calc(-1 * var(--border-thick)); }
+}
+.tabs__tab[aria-selected="true"] {
+    color: var(--color-text);
+    border-block-end-color: var(--color-accent);
+}
+.tabs__panel { padding-block-start: var(--space-5); }
+.tabs__panel[hidden] { display: none; }
+```
+
+**Example** (markup + external module):
+
+```html
+<div class="tabs" data-tabs>
+    <div class="tabs__list" role="tablist" aria-label="Report sections">
+        <button type="button" class="tabs__tab" role="tab" id="tabOverview"
+                aria-selected="true" aria-controls="panelOverview">Overview</button>
+        <button type="button" class="tabs__tab" role="tab" id="tabKeywords"
+                aria-selected="false" aria-controls="panelKeywords" tabindex="-1">Keywords</button>
+    </div>
+    <div class="tabs__panel" id="panelOverview" role="tabpanel" aria-labelledby="tabOverview" tabindex="0">
+        <p>Overview content.</p>
+    </div>
+    <div class="tabs__panel" id="panelKeywords" role="tabpanel" aria-labelledby="tabKeywords" tabindex="0" hidden="hidden">
+        <p>Keyword content.</p>
+    </div>
+</div>
+<script type="text/javascript" src="../Scripts/tabs.js"></script>
+```
+
+```js
+// Scripts/tabs.js — module pattern; runs directly (no DOMContentLoaded; AJAX-loaded)
+var TabsModule = (function () {
+    function activate(list, tab) {
+        var tabs = Array.prototype.slice.call(list.querySelectorAll("[role=\"tab\"]"));
+        tabs.forEach(function (t) {
+            var selected = (t === tab);
+            t.setAttribute("aria-selected", selected ? "true" : "false");
+            t.tabIndex = selected ? 0 : -1;
+            var panel = document.getElementById(t.getAttribute("aria-controls"));
+            if (panel != null) { panel.hidden = !selected; }
+        });
+    }
+    function onKeydown(list, event) {
+        var keys = ["ArrowRight", "ArrowLeft", "Home", "End"];
+        if (keys.indexOf(event.key) === -1) { return; }
+        var tabs = Array.prototype.slice.call(list.querySelectorAll("[role=\"tab\"]"));
+        var current = tabs.indexOf(document.activeElement);
+        var next = current;
+        if (event.key === "ArrowRight") { next = (current + 1) % tabs.length; }
+        else if (event.key === "ArrowLeft") { next = (current - 1 + tabs.length) % tabs.length; }
+        else if (event.key === "Home") { next = 0; }
+        else if (event.key === "End") { next = tabs.length - 1; }
+        event.preventDefault();
+        tabs[next].focus();
+        activate(list, tabs[next]);
+    }
+    function init(root) {
+        var list = root.querySelector("[role=\"tablist\"]");
+        if (list == null) { return; }
+        list.addEventListener("click", function (event) {
+            var tab = event.target.closest("[role=\"tab\"]");
+            if (tab != null) { activate(list, tab); tab.focus(); }
+        });
+        list.addEventListener("keydown", function (event) { onKeydown(list, event); });
+    }
+    document.querySelectorAll("[data-tabs]").forEach(function (root) { init(root); });
+    return { init: init };
+})();
+```
+
+**A11y:** `role="tablist"/"tab"/"tabpanel"`; `aria-selected` on the active tab; **roving
+tabindex** (only the selected tab is in the tab order); Left/Right/Home/End move focus and
+activate; each panel is `aria-labelledby` its tab and focusable; inactive panels use `hidden`.
+
+---
+
+### 9.11 Toast / alert
+
+Two forms: an **inline alert** (in flow — e.g. a modal's `#feedback`) and a **toast** (a
+fixed, transient, auto-dismissing alert). Toast JS is an external module. Never color alone;
+keyboard-dismissible; the reduced-motion reset (§7) neutralizes the entrance.
+
+**CSS:**
+
+```css
+.alert {
+    display: flex; align-items: flex-start; gap: var(--space-2);
+    padding-inline: var(--space-4); padding-block: var(--space-3);
+    border: var(--border-thin) solid transparent;
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+    color: var(--color-text);
+}
+.alert__icon { flex: none; display: flex; }
+.alert__body { flex: 1 1 auto; }
+.alert--success { background: var(--color-success-bg); border-color: var(--color-success); }
+.alert--warning { background: var(--color-warning-bg); border-color: var(--color-warning); }
+.alert--danger  { background: var(--color-danger-bg);  border-color: var(--color-danger); }
+.alert--info    { background: var(--color-info-bg);    border-color: var(--color-info); }
+
+/* toast = an alert pinned to a fixed region */
+.toast-region {
+    position: fixed;
+    inset-block-end: var(--space-5);
+    inset-inline-end: var(--space-5);
+    z-index: var(--layer-toast);
+    display: flex; flex-direction: column; gap: var(--space-2);
+    inline-size: min(var(--size-xs), 100%);
+}
+.toast {
+    background: var(--color-surface);
+    box-shadow: var(--shadow-md);
+    opacity: 0;
+    transform: translateY(var(--space-2));
+    transition: opacity var(--motion-base) var(--ease-standard),
+                transform var(--motion-base) var(--ease-standard);
+}
+.toast.is-visible { opacity: 1; transform: translateY(0); }
+.toast__close {
+    margin-inline-start: auto; flex: none;
+    background: none; border: none; cursor: pointer; color: var(--color-text-muted);
+    &:focus-visible { outline: var(--border-thick) solid var(--color-focus); outline-offset: var(--border-thin); }
+}
+```
+
+**Example** (inline alert + toast region + module):
+
+```html
+<!-- inline alert -->
+<div class="alert alert--danger" role="alert">
+    <span class="alert__icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 20 20" focusable="false">
+            <path d="M10 6v5M10 14h.01" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
+    </span>
+    <span class="alert__body">Couldn't save — check the highlighted fields.</span>
+</div>
+
+<!-- toast region (place once in the page shell) -->
+<div class="toast-region" id="toastRegion" role="status" aria-live="polite"></div>
+<script type="text/javascript" src="../Scripts/toast.js"></script>
+```
+
+```js
+// Scripts/toast.js — build DOM via textContent (no markup injection, no ${} EL collision)
+var ToastModule = (function () {
+    var REGION_ID = "toastRegion";
+    var AUTO_DISMISS_MS = 5000;
+    function dismiss(toast) {
+        toast.classList.remove("is-visible");
+        toast.addEventListener("transitionend", function () { toast.remove(); }, { once: true });
+    }
+    function show(message, variant) {
+        var host = document.getElementById(REGION_ID);
+        if (host == null) { return; }
+        var toast = document.createElement("div");
+        toast.className = "toast alert alert--" + (variant || "info");
+        var body = document.createElement("span");
+        body.className = "alert__body";
+        body.textContent = message;
+        var close = document.createElement("button");
+        close.type = "button";
+        close.className = "toast__close";
+        close.setAttribute("aria-label", "Dismiss");
+        close.textContent = "×";
+        close.addEventListener("click", function () { dismiss(toast); });
+        toast.appendChild(body);
+        toast.appendChild(close);
+        host.appendChild(toast);
+        requestAnimationFrame(function () { toast.classList.add("is-visible"); });
+        var timer = setTimeout(function () { dismiss(toast); }, AUTO_DISMISS_MS);
+        toast.addEventListener("mouseenter", function () { clearTimeout(timer); });
+        toast.addEventListener("focusin", function () { clearTimeout(timer); });
+    }
+    return { show: show };
+})();
+// usage: ToastModule.show("Report published.", "success");
+```
+
+**A11y:** the toast region is a live region (`role="status"`/`aria-live="polite"`; use a
+separate `role="alert"`/`assertive` region for errors) so new messages are announced; each
+alert/toast has a **text** body (color is never the only signal) and an `aria-hidden` icon;
+the close button is keyboard-operable with `aria-label`; auto-dismiss **pauses on hover and
+focus** (WCAG 2.2 "enough time"); the slide-in is removed under `prefers-reduced-motion`.
+
+---
+
+### 9.12 Empty state
+
+The "designed not defaulted" moment (§1) — a considered prompt, never a bare "no data".
+Centered: an `aria-hidden` icon, a real heading, one explanatory line, and a single clear
+next action.
+
+**CSS:**
+
+```css
+.empty {
+    display: flex; flex-direction: column; align-items: center;
+    gap: var(--space-4);
+    text-align: center;
+    padding-block: var(--space-8);
+    padding-inline: var(--space-5);
+    max-inline-size: var(--size-md);
+    margin-inline: auto;
+}
+.empty__icon { color: var(--color-text-subtle); }     /* SVG inherits via currentColor */
+.empty__title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: var(--weight-semibold);
+    color: var(--color-text);
+}
+.empty__body { margin: 0; font-size: var(--text-base); line-height: var(--leading-normal); color: var(--color-text-muted); }
+.empty__actions { display: flex; gap: var(--space-2); margin-block-start: var(--space-2); }
+```
+
+**Example:**
+
+```html
+<div class="empty">
+    <span class="empty__icon" aria-hidden="true">
+        <svg width="48" height="48" viewBox="0 0 48 48" focusable="false">
+            <path d="M8 16h32v22a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V16z M8 16l4-6h24l4 6"
+                  fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+        </svg>
+    </span>
+    <h2 class="empty__title">No clients yet</h2>
+    <p class="empty__body">Add your first client to start tracking SEO checklists and monthly reports.</p>
+    <div class="empty__actions">
+        <c:a action="newClient" ajax-target="modalContent" class="btn btn--primary">Add a client</c:a>
+    </div>
+</div>
+```
+
+**A11y:** a real heading puts the state in the document outline; the illustration is
+`aria-hidden`; the copy explains the *next step* (not a dead "no data"); one unambiguous
+primary action (`c:a`), keyboard-operable like any button.
 
 ---
 

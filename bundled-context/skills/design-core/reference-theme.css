@@ -137,7 +137,19 @@
   --layer-dropdown: 1000;
   --layer-modal:    1100;
   --layer-toast:    1200;
+
+  /* -- Inline-size scale — width caps for menus, toasts, forms, empty states */
+  --size-xs: 16rem;    /* ~256 — toast, narrow menu                          */
+  --size-sm: 24rem;    /* ~384 — dropdown menu min-width, compact dialog     */
+  --size-md: 32rem;    /* ~512 — form column, empty-state copy               */
+  --size-lg: 48rem;    /* ~768 — readable content container                  */
 }
+
+/* Breakpoints — a documented CONVENTION, not tokens. CSS custom properties are
+   INVALID inside @media / @container conditions, so var() cannot be used there;
+   these literal lengths are the one place a raw length is unavoidable. Use ONLY
+   this set, and only in media/container conditions (never as a design dimension):
+     sm: 40rem    md: 64rem    lg: 80rem                                        */
 
 
 /* ============================================================================
