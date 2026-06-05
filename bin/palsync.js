@@ -20,11 +20,29 @@ if (argv.includes("--version") || argv.includes("-v")) {
 // Default OFF so backend/bugfix sessions stay lean. Parsed here, threaded through run() → setup().
 const withDesign = argv.includes("--with-design") || argv.includes("-d");
 
+// --agent <claude|codex>: choose the coding agent. Default Claude Code (and, when the flag is
+// absent, the interactive picker still runs — agentFlag stays undefined). Threaded through
+// preflight (which agent's binary to check) and run() → setup() (injection + MCP destinations).
+function parseAgentFlag(args) {
+    let val;
+    const i = args.indexOf("--agent");
+    if (i !== -1) val = args[i + 1];
+    else { const eq = args.find(a => a.startsWith("--agent=")); if (eq) val = eq.slice("--agent=".length); }
+    if (val === undefined) return undefined; // no flag → default flow (interactive picker)
+    val = String(val).toLowerCase();
+    if (val !== "claude" && val !== "codex") {
+        process.stderr.write("Unknown --agent '" + val + "'. Use: claude (default) or codex.\n");
+        process.exit(1);
+    }
+    return val;
+}
+const agentFlag = parseAgentFlag(argv);
+
 (async () => {
-    await preflight.run(); // Node >= 18 (guide) + Claude Code (auto-install on consent) before anything else
+    await preflight.run({ agent: agentFlag || "claude" }); // Node >= 18 + the chosen agent's CLI
     const clack = await loadClack(); // @clack/prompts is ESM-only; dynamic import works on Node 18+
     clack.intro("palsync — PalBuilder + Claude Code");
-    const result = await run({ withDesign, log: (m) => clack.log.step(m) });
+    const result = await run({ withDesign, agent: agentFlag, log: (m) => clack.log.step(m) });
     if (!result) { clack.cancel("Cancelled."); process.exit(1); }
     clack.log.info(
         "Creatable here: pages, fragments, scripts, emails, images, styles, attachments.\n" +

@@ -11,6 +11,7 @@ const lock = require("../core/lock");
 const contextInject = require("./contextInject");
 const palsyncfile = require("../core/palsyncfile");
 const { register } = require("../mcp/register");
+const { registerCodex } = require("../mcp/registerCodex");
 const { hashWorkspace } = require("../core/workspaceHash");
 
 function slug(name) {
@@ -26,8 +27,9 @@ async function readIfExists(p) {
 }
 
 // Run the full setup. Returns a summary. Throws if the pal is locked by another user.
-// withDesign (default false) opts the workspace into the design skills; see contextInject.
-async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false, log = () => {} }) {
+//   withDesign (default false) opts the workspace into the design skills; see contextInject.
+//   agent ("claude" default | "codex") picks the injection destinations and MCP registration path.
+async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false, agent = "claude", log = () => {} }) {
     const claudePath = path.join(workspaceDir, "CLAUDE.md");
 
     // Preserve a user's existing CLAUDE.md across the pull (pull wipes the dir).
@@ -51,8 +53,9 @@ async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false,
 
     // restore the user's CLAUDE.md (if any) before injecting, so the managed block merges in
     if (priorClaude != null) await fs.writeFile(claudePath, priorClaude, "utf8");
-    log("injecting CLAUDE.md + skills" + (withDesign ? " (with design system)" : ""));
-    const injected = await contextInject.inject(workspaceDir, { palName: sel.pal.name, withDesign });
+    log("injecting CLAUDE.md + skills" + (withDesign ? " (with design system)" : "") +
+        (agent === "codex" ? " + AGENTS.md/.agents (Codex)" : ""));
+    const injected = await contextInject.inject(workspaceDir, { palName: sel.pal.name, withDesign, agent });
 
     // .palsync.json (drift marker = pulled lastModifiedDate; localHash baseline)
     const record = palsyncfile.buildRecord({
@@ -64,9 +67,25 @@ async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false,
     record.pulledAt = new Date().toISOString();
     await palsyncfile.write(workspaceDir, record);
 
-    // register MCP server with Claude Code
-    log("registering palsync MCP server (.mcp.json)");
-    const reg = await register(workspaceDir);
+    // register the MCP server for the chosen agent.
+    let reg;
+    if (agent === "codex") {
+        log("registering palsync MCP server with Codex (codex mcp add)");
+        reg = await registerCodex(workspaceDir);
+        if (reg.ok) {
+            log("  registered with Codex" + (reg.refreshed ? " (refreshed)" : ""));
+            // The Codex MCP entry is GLOBAL (~/.codex/config.toml) — one shared `palsync` server
+            // whose PALSYNC_WORKSPACE is whatever was registered last. Make the current target loud.
+            log("  Codex MCP 'palsync' now targets: " + workspaceDir + "  (" + sel.pal.name + ")");
+        } else if (reg.reason === "codex-not-found") {
+            log("  ⚠ Codex CLI not found — register the MCP server manually once Codex is installed:\n      " + reg.command);
+        } else {
+            log("  ⚠ `codex mcp add` failed (" + (reg.stderr || "unknown") + ") — register manually:\n      " + reg.command);
+        }
+    } else {
+        log("registering palsync MCP server (.mcp.json)");
+        reg = await register(workspaceDir);
+    }
 
     return {
         workspaceDir,
@@ -75,7 +94,9 @@ async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false,
         locked: lk.acquired,
         lockHolder: lk.holder,
         injected,
-        mcpConfig: reg.filePath,
+        agent,
+        mcpConfig: reg.filePath || null,   // .mcp.json path (Claude) or null (Codex uses its own config)
+        mcpRegistration: reg,
         record,
         userClaudePreserved: priorClaude != null
     };

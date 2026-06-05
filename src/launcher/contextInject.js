@@ -115,43 +115,67 @@ async function readIfExists(p) {
     catch (e) { if (e.code === "ENOENT") return null; throw e; }
 }
 
-// Inject everything into workspaceDir. Returns a summary of what was written.
-// withDesign (default false) gates the opt-in design skills; the always-on skills always ship.
-async function inject(workspaceDir, { palName, withDesign = false } = {}) {
-    // 1a) always-on skills (palsync-owned)
-    for (const s of ALWAYS_ON_SKILLS) {
-        await copyFile(path.join(BUNDLE_DIR, "skills", s, "SKILL.md"),
-                       path.join(workspaceDir, ".claude", "skills", s, "SKILL.md"));
-    }
-    // 1b) design skills (opt-in). Each ships its SKILL.md plus any companion assets (e.g. the
-    //     reference-theme.css the skill copies into the pal's Styles/). Skipped entirely by default.
-    const designSkills = withDesign ? DESIGN_SKILLS : [];
-    for (const d of designSkills) {
-        await copyFile(path.join(BUNDLE_DIR, "skills", d.name, "SKILL.md"),
-                       path.join(workspaceDir, ".claude", "skills", d.name, "SKILL.md"));
-        for (const asset of (d.assets || [])) {
-            await copyFile(path.join(BUNDLE_DIR, "skills", d.name, asset),
-                           path.join(workspaceDir, ".claude", "skills", d.name, asset));
+// The effective skill SET for a session, defined ONCE (always-on + design when opted in).
+// Normalized to { name, assets } so always-on and design skills copy the same way. Per-agent
+// code only varies the DESTINATION root — never the skill list.
+function effectiveSkills(withDesign) {
+    return ALWAYS_ON_SKILLS.map(name => ({ name, assets: [] }))
+        .concat(withDesign ? DESIGN_SKILLS : []);
+}
+
+// Copy a skill set's SKILL.md (+ companion assets) into <rootDir>/skills/<name>/.
+// rootDir is the agent's skills root: ".claude" (Claude) or ".agents" (Codex open standard).
+async function copySkillSet(workspaceDir, rootDir, skills) {
+    for (const s of skills) {
+        await copyFile(path.join(BUNDLE_DIR, "skills", s.name, "SKILL.md"),
+                       path.join(workspaceDir, rootDir, "skills", s.name, "SKILL.md"));
+        for (const asset of (s.assets || [])) {
+            await copyFile(path.join(BUNDLE_DIR, "skills", s.name, asset),
+                           path.join(workspaceDir, rootDir, "skills", s.name, asset));
         }
     }
-    // 2) CLAUDE.palsync.md (palsync-owned pal rules, written fresh)
+}
+
+// Inject everything into workspaceDir. Returns a summary of what was written.
+//   withDesign (default false) gates the opt-in design skills.
+//   agent ("claude" default | "codex") decides which destinations get written. The Claude path
+//   (.claude/skills + CLAUDE.md + CLAUDE.palsync.md) is ALWAYS written and byte-for-byte unchanged;
+//   Codex ADDITIONALLY gets the same skills at the .agents/ open standard + an AGENTS.md carrying
+//   the same managed instruction block (Claude Code does not read .agents/ or AGENTS.md — verified).
+async function inject(workspaceDir, { palName, withDesign = false, agent = "claude" } = {}) {
+    const skills = effectiveSkills(withDesign);
+
+    // (A) CLAUDE path — always written, unchanged.
+    await copySkillSet(workspaceDir, ".claude", skills);
     await copyFile(path.join(BUNDLE_DIR, "CLAUDE.md"), path.join(workspaceDir, "CLAUDE.palsync.md"));
-
-    // 3) CLAUDE.md (user file; only the managed block is touched)
     const claudePath = path.join(workspaceDir, "CLAUDE.md");
-    const existing = await readIfExists(claudePath);
-    const merged = mergeClaudeMd(existing, palName);
-    await fs.writeFile(claudePath, merged.content, "utf8");
+    const existingClaude = await readIfExists(claudePath);
+    const mergedClaude = mergeClaudeMd(existingClaude, palName);
+    await fs.writeFile(claudePath, mergedClaude.content, "utf8");
 
-    const skillPaths = ALWAYS_ON_SKILLS.concat(designSkills.map(d => d.name))
-        .map(name => path.join(".claude/skills", name, "SKILL.md"));
+    // (B) CODEX path — additive, only for --agent codex. Same skills at the open-standard root,
+    //     plus AGENTS.md with the same managed block (user content preserved, like CLAUDE.md).
+    let agentsMd = null;
+    if (agent === "codex") {
+        await copySkillSet(workspaceDir, ".agents", skills);
+        const agentsPath = path.join(workspaceDir, "AGENTS.md");
+        const existingAgents = await readIfExists(agentsPath);
+        const mergedAgents = mergeClaudeMd(existingAgents, palName);
+        await fs.writeFile(agentsPath, mergedAgents.content, "utf8");
+        agentsMd = { path: "AGENTS.md", mode: mergedAgents.mode, userContentPreserved: existingAgents != null };
+    }
+
+    const skillNames = skills.map(s => s.name);
     return {
-        skills: skillPaths,
+        agent,
+        skills: skillNames.map(name => path.join(".claude/skills", name, "SKILL.md")),
+        agentSkills: agent === "codex" ? skillNames.map(name => path.join(".agents/skills", name, "SKILL.md")) : [],
         designInjected: withDesign,
-        designSkills: designSkills.map(d => d.name),
+        designSkills: withDesign ? DESIGN_SKILLS.map(d => d.name) : [],
         claudePalsync: "CLAUDE.palsync.md",
-        claudeMd: { path: "CLAUDE.md", mode: merged.mode, userContentPreserved: existing != null }
+        claudeMd: { path: "CLAUDE.md", mode: mergedClaude.mode, userContentPreserved: existingClaude != null },
+        agentsMd
     };
 }
 
-module.exports = { inject, mergeClaudeMd, managedBlock, syncSection, BEGIN, END, BUNDLE_DIR, ALWAYS_ON_SKILLS, DESIGN_SKILLS };
+module.exports = { inject, mergeClaudeMd, managedBlock, syncSection, BEGIN, END, BUNDLE_DIR, ALWAYS_ON_SKILLS, DESIGN_SKILLS, effectiveSkills };

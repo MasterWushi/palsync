@@ -24,6 +24,7 @@ async function run({
     chooseWorkspaceDir = defaultChooseDir,
     autoLaunch = true,
     withDesign = false,
+    agent: agentKey,
     log = () => {}
 } = {}) {
     // 1–2. cloud + login (cached creds skip the prompt)
@@ -35,15 +36,22 @@ async function run({
     if (!sel) { log("cancelled at selection"); return null; }
     log("selected pal: " + sel.pal.name + " (" + sel.pal.guid + ")");
 
-    // 4. agent
-    const agent = await agents.pick(pickAgent);
-    if (!agent) { log("cancelled at agent"); return null; }
+    // 4. agent — an explicit --agent value resolves directly (skips the picker); otherwise fall
+    //    back to the interactive pick (Claude Code default). Codex is reachable only via the flag.
+    let agent;
+    if (agentKey) {
+        agent = agents.resolve(agentKey);
+        if (!agent) throw new Error("Unknown agent '" + agentKey + "'. Use --agent claude or --agent codex.");
+    } else {
+        agent = await agents.pick(pickAgent);
+        if (!agent) { log("cancelled at agent"); return null; }
+    }
     log("agent: " + agent.label);
 
     // 5. workspace dir + setup (pull + lock + inject + .palsync.json + register MCP)
     const dir = await chooseWorkspaceDir(workspace.defaultWorkspaceDir(sel.pal.name), sel.pal);
     if (!dir) { log("cancelled at workspace dir"); return null; }
-    const setupResult = await workspace.setup({ session, cloudUrl, sel, workspaceDir: dir, withDesign, log });
+    const setupResult = await workspace.setup({ session, cloudUrl, sel, workspaceDir: dir, withDesign, agent: agent.key, log });
 
     // 6. open the agent in the workspace (handoff). Lock stays held; MCP server owns release.
     let child = null;

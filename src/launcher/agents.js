@@ -6,12 +6,24 @@
 const { spawn } = require("child_process");
 
 const AGENTS = [
-    { id: "claude-code", label: "Claude Code", command: "claude", args: [], available: true }
+    // `available` controls the interactive picker only. Claude Code is the default, menu-listed
+    // agent; Codex is reachable via the explicit `--agent codex` flag (resolve()) but not yet
+    // surfaced in the picker. `key` is the --agent flag value.
+    { id: "claude-code", key: "claude", label: "Claude Code", command: "claude", args: [], available: true },
+    { id: "codex", key: "codex", label: "Codex", command: "codex", args: [], available: false }
     // future: { id: "cline", ..., available: false }, { id: "cursor", ..., available: false }
 ];
 
 function available() {
     return AGENTS.filter(a => a.available);
+}
+
+// Resolve an explicit --agent value ("claude" | "codex" | an id) to a descriptor, or null.
+// Works regardless of `available` so opt-in agents are reachable by flag before they're menu-listed.
+function resolve(key) {
+    if (!key) return null;
+    const k = String(key).toLowerCase();
+    return AGENTS.find(a => a.key === k || a.id === k) || null;
 }
 
 // Default interactive pick (single live option in v1). Returns an agent descriptor.
@@ -35,7 +47,7 @@ function launch(agent, { cwd, stdio = "inherit" } = {}) {
     child.on("error", (err) => {
         if (err && err.code === "ENOENT") {
             process.stderr.write(
-                "\nCould not launch '" + agent.command + "'. Make sure Claude Code is installed and on PATH.\n" +
+                "\nCould not launch '" + agent.command + "'. Make sure " + agent.label + " is installed and on PATH.\n" +
                 "Your workspace is ready — open it manually:  cd " + cwd + " && " + agent.command + "\n"
             );
         } else {
@@ -45,4 +57,4 @@ function launch(agent, { cwd, stdio = "inherit" } = {}) {
     return child;
 }
 
-module.exports = { AGENTS, available, pick, launch };
+module.exports = { AGENTS, available, pick, launch, resolve };

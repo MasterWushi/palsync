@@ -14,14 +14,29 @@ silently clobber someone else's work.
 - ⬆️ **Push from the conversation** — with a drift guard that refuses to overwrite newer server changes.
 - 🖥️ **Cross-platform** — macOS, Windows, Linux.
 
-## Install
+## Install / Update
 
 ```sh
 npm install -g github:MasterWushi/palsync
 ```
 
-Installs the global `palsync` command (plus `palsync-mcp`, which Claude Code launches automatically,
-and `palpush`, a headless deploy CLI). **No build step** — the OS-keychain dependency ships prebuilt.
+The **same command installs and updates** — re-run it to pull the latest commit. Installs the global
+`palsync` command (plus `palsync-mcp`, which the agent launches automatically, and `palpush`, a
+headless deploy CLI). **No build step** — the OS-keychain dependency ships prebuilt.
+
+If a re-install doesn't pick up the newest version, force a clean fetch:
+
+```sh
+npm install -g github:MasterWushi/palsync --force
+```
+
+npm can serve a **cached** copy of a git dependency, so an update may silently reinstall the old
+commit; `--force` bypasses the cache and guarantees you get the newest commit. Confirm the build you
+ended up with:
+
+```sh
+palsync --version
+```
 
 ## Prerequisites
 
@@ -50,6 +65,7 @@ Now talk to Claude. Ask for a change, then say *"push it."*
 |------|-------|--------------|
 | `--version` | `-v` | Print the palsync build version and exit. |
 | `--with-design` | `-d` | Inject the **Nimblewire design system** (`design-core`) into the workspace for UI work. |
+| `--agent <name>` | | Choose the coding agent: `claude` (default) or `codex`. |
 
 The PalBuilder coding skills (`palbuilder-frontend`, `palbuilder-backend`) are **always** injected.
 The **design skills are opt-in (default off)** to keep Claude's context lean for backend and bugfix
@@ -64,6 +80,25 @@ palsync --with-design   # + the Nimblewire design system, for UI work
 
 > This will grow to `design-marketing` / `design-app` / `design-enterprise` once those skills exist;
 > `--with-design` will inject the design set as a whole.
+
+### Choosing an agent
+
+palsync defaults to **Claude Code**. Pass `--agent codex` to use **Codex** instead:
+
+```sh
+palsync                 # Claude Code (default): skills → .claude/skills/, instructions → CLAUDE.md
+palsync --agent codex   # Codex: skills → .agents/skills/ + AGENTS.md, MCP via `codex mcp add`, launches codex
+palsync --agent codex --with-design   # Codex + the design system
+```
+
+With `--agent codex`, palsync writes the same skills to the cross-agent **Agent Skills** open
+standard (`.agents/skills/<name>/SKILL.md` + companion assets) and an `AGENTS.md` instruction file,
+registers the palsync MCP server with Codex via `codex mcp add` (Codex owns its `~/.codex/config.toml`),
+and launches `codex` in the workspace. The Claude Code paths (`.claude/skills/`, `CLAUDE.md`) are
+**always** written too and are unchanged, so nothing about the default flow regresses. Because it's
+built on the open Agent Skills standard, this generalizes to other agents as they adopt it. If the
+`codex` CLI isn't installed, palsync still prepares the workspace and prints the exact manual
+registration + launch commands rather than failing.
 
 ## MCP tools (Claude calls these for you)
 
