@@ -64,9 +64,9 @@ inner content — no `<html>/<head>/<body>`. (A plain `<div xmlns:c="contractpal
 
 ---
 
-## XHTML Rules — Non-Negotiable
+## XHTML Rules — Non-Negotiable (element structure only)
 
-Palbuilder parses pages as XHTML. Malformed markup causes hard errors.
+Palbuilder parses page **element structure** as XHTML. Malformed markup causes hard errors.
 
 **All void/self-closing tags must be explicitly self-closed:**
 
@@ -82,6 +82,59 @@ Palbuilder parses pages as XHTML. Malformed markup causes hard errors.
 <input type="text" name="foo">
 <img src="logo.png" alt="">
 ```
+
+**Scope of strictness:** this XHTML strictness applies to **elements and attributes** — tags
+must be well-formed and void tags must self-close. It does **NOT** extend to the **text content of
+`<script>` and `<style>`**, which the server treats as raw text (HTML5 raw-text content model). See
+the next section — write CSS and JS naturally in those blocks; do not escape or CDATA-wrap them.
+
+---
+
+## CSS & JavaScript inside `<style>` / `<script>` — write it naturally
+
+Empirically verified by pushing live test pages and reading the stored bytes back: `<style>` and
+`<script>` bodies round-trip **byte-for-byte**, including raw `<`, `>`, and `&`. The XHTML parser
+re-serializes page *structure* (e.g. `<head>` whitespace) but leaves script/style text untouched.
+
+**Write CSS and JS exactly as you normally would.** No escaping, no CDATA, no workarounds:
+
+```html
+<style>
+    .menu > .item { color: red; }                 /* raw > child combinator — fine */
+    .card { color: #111; &:hover { color: #222; } } /* native nesting, raw & — fine */
+</style>
+<script>
+    for (var i = 0; i < n; i++) { total += i; }   /* raw < — fine */
+    if (x < y && y > 0) { go(); }                 /* raw <, >, && — fine */
+    var html = "<div class='z'>raw</div>";        /* raw markup in a JS string — fine */
+</script>
+```
+
+All of the above saved cleanly (server `success: true`) and stored verbatim.
+
+### Anti-patterns — these BREAK content (do not do them)
+
+- **Do NOT wrap script/style content in `<![CDATA[ … ]]>`.** The XML layer recognizes `<![CDATA[`
+  as a real marked section and rewrites the boundary, swallowing your comment guard. In testing,
+  `/*<![CDATA[*/ … /*]]>*/` came back as `<style><![CDATA[ */ …` — an orphaned `*/` that corrupts
+  the CSS. CDATA is harmful here, not protective.
+- **Do NOT entity-escape `<` `>` `&` inside script/style.** They are stored **literally** — `i &lt; n`
+  comes back as the literal text `i &lt; n`, which is invalid JavaScript at runtime. Escaping only
+  makes sense in element/attribute text, never in script/style bodies.
+
+### Two caveats
+
+1. **Avoid `${...}` template literals in inline page `<script>`.** `${}` is PalBuilder's server-side
+   EL binding syntax (see *Variable Binding* below) and is resolved at **render** time — a JS template
+   literal `` `total is ${total}` `` risks having `${total}` evaluated (and likely blanked) by the
+   server before the browser sees it. Prefer string concatenation, or move logic to an **external
+   `.js` file** (static script files bypass page EL processing). The source survives the *save*
+   intact; the collision is at render.
+2. **Native CSS nesting (`&`) and JS `&&` emit cosmetic validation notes.** PalBuilder's CSS linter
+   reports `&:hover … not handled` / `Invalid css property` and flags `&&`. These are **non-fatal** —
+   the save succeeds (`success: true`) and the content is stored unaltered. Expect the noise; it does
+   not block anything or change your code. (The real save/reject signal is the `success` flag, not the
+   presence of validation notes.)
 
 ---
 
@@ -441,6 +494,9 @@ browser; `fetch`/ClientPal expose everything in devtools.
 | `<img src="x.png">` | `<img src="x.png" />` |
 | `DOMContentLoaded` in an AJAX-loaded fragment | Run JS directly, no wrapper |
 | Hardcoding a CDN `<script>` for Bootstrap/jQuery/Chart.js | `c:resource source=... version=... name=...` |
+| CDATA-wrapping `<script>`/`<style>` (`<![CDATA[ … ]]>`) | Write raw — CDATA gets mangled and corrupts the content |
+| Entity-escaping `<` `>` `&` inside `<script>`/`<style>` | Write raw — escapes are stored literally and break JS |
+| `` `…${x}…` `` template literal in inline page `<script>` | String concat, or move JS to an external `.js` file (`${}` collides with server EL) |
 | Using any undocumented tag attribute | Check the docs first |
 
 ---

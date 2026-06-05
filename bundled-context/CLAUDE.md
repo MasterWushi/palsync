@@ -33,9 +33,18 @@ a warning.
 
 ## GOLDEN RULES — these cause hard failures
 
-1. **XHTML is strict.** Every void tag must be explicitly self-closed:
-   `<input ... />`, `<img ... />`, `<br />`, `<hr />`, `<col />`. An unclosed
-   tag is a parse error, not a lint warning.
+1. **XHTML is strict — for element structure.** Every void tag must be explicitly
+   self-closed: `<input ... />`, `<img ... />`, `<br />`, `<hr />`, `<col />`. An
+   unclosed tag is a parse error, not a lint warning. This strictness covers
+   **tags and attributes only** — it does NOT apply to the **text content of
+   `<script>` and `<style>`**, which is raw text. Write CSS and JS naturally
+   there: raw `<`, `>`, `&` round-trip byte-for-byte (verified live). Do **not**
+   CDATA-wrap script/style (the XML layer mangles it and corrupts CSS) and do
+   **not** entity-escape `<`/`>`/`&` inside them (stored literally, breaks JS).
+   One caveat: avoid `${...}` template literals in inline page `<script>` — `${}`
+   collides with server-side EL at render time; use string concat or an external
+   `.js` file. (Native CSS nesting `&` and JS `&&` emit cosmetic, non-fatal CSS-linter
+   notes — the save still succeeds and content is unchanged.)
 2. **Never use an undocumented `c:` attribute.** Each `c:` tag has a fixed
    attribute set. Using any attribute not in the reference throws a validation
    error. Check before using an attribute you haven't used before.
