@@ -16,11 +16,15 @@ if (argv.includes("--version") || argv.includes("-v")) {
     process.exit(0);
 }
 
+// --with-design / -d: opt in to injecting the Nimblewire design system (design-core) for UI work.
+// Default OFF so backend/bugfix sessions stay lean. Parsed here, threaded through run() → setup().
+const withDesign = argv.includes("--with-design") || argv.includes("-d");
+
 (async () => {
     await preflight.run(); // Node >= 18 (guide) + Claude Code (auto-install on consent) before anything else
     const clack = await loadClack(); // @clack/prompts is ESM-only; dynamic import works on Node 18+
     clack.intro("palsync — PalBuilder + Claude Code");
-    const result = await run({ log: (m) => clack.log.step(m) });
+    const result = await run({ withDesign, log: (m) => clack.log.step(m) });
     if (!result) { clack.cancel("Cancelled."); process.exit(1); }
     clack.log.info(
         "Creatable here: pages, fragments, scripts, emails, images, styles, attachments.\n" +

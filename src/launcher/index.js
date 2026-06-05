@@ -23,6 +23,7 @@ async function run({
     pickAgent,
     chooseWorkspaceDir = defaultChooseDir,
     autoLaunch = true,
+    withDesign = false,
     log = () => {}
 } = {}) {
     // 1–2. cloud + login (cached creds skip the prompt)
@@ -42,7 +43,7 @@ async function run({
     // 5. workspace dir + setup (pull + lock + inject + .palsync.json + register MCP)
     const dir = await chooseWorkspaceDir(workspace.defaultWorkspaceDir(sel.pal.name), sel.pal);
     if (!dir) { log("cancelled at workspace dir"); return null; }
-    const setupResult = await workspace.setup({ session, cloudUrl, sel, workspaceDir: dir, log });
+    const setupResult = await workspace.setup({ session, cloudUrl, sel, workspaceDir: dir, withDesign, log });
 
     // 6. open the agent in the workspace (handoff). Lock stays held; MCP server owns release.
     let child = null;

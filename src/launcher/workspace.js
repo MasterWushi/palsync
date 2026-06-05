@@ -26,7 +26,8 @@ async function readIfExists(p) {
 }
 
 // Run the full setup. Returns a summary. Throws if the pal is locked by another user.
-async function setup({ session, cloudUrl, sel, workspaceDir, log = () => {} }) {
+// withDesign (default false) opts the workspace into the design skills; see contextInject.
+async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false, log = () => {} }) {
     const claudePath = path.join(workspaceDir, "CLAUDE.md");
 
     // Preserve a user's existing CLAUDE.md across the pull (pull wipes the dir).
@@ -50,8 +51,8 @@ async function setup({ session, cloudUrl, sel, workspaceDir, log = () => {} }) {
 
     // restore the user's CLAUDE.md (if any) before injecting, so the managed block merges in
     if (priorClaude != null) await fs.writeFile(claudePath, priorClaude, "utf8");
-    log("injecting CLAUDE.md + skills");
-    const injected = await contextInject.inject(workspaceDir, { palName: sel.pal.name });
+    log("injecting CLAUDE.md + skills" + (withDesign ? " (with design system)" : ""));
+    const injected = await contextInject.inject(workspaceDir, { palName: sel.pal.name, withDesign });
 
     // .palsync.json (drift marker = pulled lastModifiedDate; localHash baseline)
     const record = palsyncfile.buildRecord({

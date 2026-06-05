@@ -44,6 +44,27 @@ palsync
 
 Now talk to Claude. Ask for a change, then say *"push it."*
 
+## Flags
+
+| Flag | Alias | What it does |
+|------|-------|--------------|
+| `--version` | `-v` | Print the palsync build version and exit. |
+| `--with-design` | `-d` | Inject the **Nimblewire design system** (`design-core`) into the workspace for UI work. |
+
+The PalBuilder coding skills (`palbuilder-frontend`, `palbuilder-backend`) are **always** injected.
+The **design skills are opt-in (default off)** to keep Claude's context lean for backend and bugfix
+sessions that don't touch UI. Pass `--with-design` (or `-d`) when you're building or styling an
+interface — it adds `design-core` (the token architecture, component recipes, and anti-slop rules)
+plus its `reference-theme.css` to the workspace's `.claude/skills/`.
+
+```sh
+palsync                 # always-on PalBuilder skills only (lean)
+palsync --with-design   # + the Nimblewire design system, for UI work
+```
+
+> This will grow to `design-marketing` / `design-app` / `design-enterprise` once those skills exist;
+> `--with-design` will inject the design set as a whole.
+
 ## MCP tools (Claude calls these for you)
 
 | Tool | What it does |
