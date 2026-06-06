@@ -20,6 +20,79 @@ an AJAX fragment. This skill covers **Console** (authenticated) and **Web** (ope
 
 ---
 
+## Workflow JS engine — supported syntax (restricted; write ES3-style)
+
+> **Why this is stricter than the front-end.** Workflow `.js` runs through PalBuilder's **restricted
+> server-side compile engine** — not a browser, not Node. Unlike page `<script>` (permissive raw text,
+> validated inline at save), workflow JS is validated at **COMPILE time in the PalBuilder builder**, not
+> at save — so a file can save "successfully" over the API yet be full of compile errors the builder
+> shows. That same split is why this boundary **cannot be capability-tested headlessly** the way page
+> `<script>` was (the headless save API returns frozen/cached validation, never a fresh workflow
+> compile). Verify workflow syntax in the **builder**, and default to the ES3-style subset below.
+
+### ❌ NEVER use object literals `{ ... }` — this is the one that bites
+
+PalBuilder's workflow engine **does not support object literals.** Every `{ key: value }` throws
+**`Objects not supported`**, plus a cascading **`Variable <propName> not declared`** for *each*
+property name. An array-of-objects seed produces dozens of these errors at once.
+
+```js
+// ✗ WRONG — every object literal errors ("Objects not supported" + "Variable itemId not declared", …)
+var CHECKLIST_SEED = [
+    { itemId: "title-keyword-first", owner: "sam", sortOrder: 1 },
+    { itemId: "desc-unique",         owner: "sam", sortOrder: 2 }
+];
+```
+
+**Fix — use parallel arrays, or build a DataList** (`c.createDataList(name, columns)` +
+`row.setValue(col, val)`), which is the platform-native way to carry tabular data:
+
+```js
+// ✓ RIGHT — a DataList: columns + one insertRecord() per row, setValue() per field
+var COLUMNS = ["itemId", "owner", "sortOrder"];
+var seed = c.createDataList("checklistSeed", COLUMNS);
+
+var row1 = seed.insertRecord();
+row1.setValue("itemId", "title-keyword-first");
+row1.setValue("owner", "sam");
+row1.setValue("sortOrder", 1);
+
+var row2 = seed.insertRecord();
+row2.setValue("itemId", "desc-unique");
+row2.setValue("owner", "sam");
+row2.setValue("sortOrder", 2);
+// ... then seed.getDataSet-style bulkInsert, etc.
+
+// ✓ ALSO FINE — parallel arrays of primitives for small fixed data
+var ITEM_IDS = ["title-keyword-first", "desc-unique"];
+var OWNERS   = ["sam", "sam"];
+var ORDERS   = [1, 2];
+```
+
+### Confirmed safe (proven in production workflows)
+
+`var`; classic `for (var i = 0; i < n; i++)`; `if` / `switch`; **function declarations**
+(`function name(args) { }`); **array literals of primitives** (`var COLS = ["a", "b"];`); string
+concatenation (`"x " + y`); array indexing (`a[i]`) and `.length`; and the platform DataSet / DataView
+/ DataList APIs (`pal.getDataSet`, `c.createDataList`, `insertRecord`, `setValue`, `bulkInsert`,
+`getRecords`, filters, …).
+
+### ❌ `let` / `const` are not available
+
+Use `var`. Signal constants with `UPPER_SNAKE_CASE` (`var DAY_IN_MINUTES = 60 * 24;`).
+
+### ⚠️ Unsupported until verified in the PalBuilder builder
+
+Not present in any known-good workflow and not yet confirmed in the builder — **treat as unsupported**
+and avoid: arrow functions `=>`, template literals `` `${ }` ``, destructuring (`var [a,b] = …` /
+`var {a} = …`), `for...of` / `for...in`, array higher-order methods (`.map` / `.filter` / `.forEach` /
+`.reduce`), and function **expressions** (`var f = function(){}`). The engine already rejects `let` /
+`const` and object literals (pre-ES6 behavior), so assume ES6 features fail until a builder compile
+proves otherwise. Stick to the confirmed subset above. *(Promoting these to "confirmed" once checked in
+the builder is a later enhancement, not a guess to make now.)*
+
+---
+
 ## Includes
 
 Libraries are included at the top of the file with `@include`. Common platform libraries:
