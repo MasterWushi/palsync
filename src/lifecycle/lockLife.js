@@ -38,8 +38,18 @@ class LockLifecycle {
     }
 
     async _onIdle() {
+        // THE REAL FIX: this runs from a setTimeout callback that does NOT await us, so any
+        // rejection here is an UNHANDLED rejection — and on Node >= 15 that terminates the
+        // process. A failed idle-release (network blip, expired session, server 5xx) must be
+        // caught and logged here, never allowed to escape. Release is best-effort; we still
+        // exit so the idle session ends (own-stale-lock auto-reclaim covers a missed release).
         this.log("idle " + this.idleMs + "ms — releasing lock");
-        await this.release("idle-timeout");
+        try {
+            await this.release("idle-timeout");
+        } catch (err) {
+            this.log("idle-release FAILED (continuing to exit; lock auto-reclaims next session): " +
+                (err && err.stack ? err.stack : err));
+        }
         if (this.exitOnIdle) process.exit(0);
     }
 
