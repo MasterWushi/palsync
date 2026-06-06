@@ -44,29 +44,51 @@ var CHECKLIST_SEED = [
 ];
 ```
 
-**Fix — use parallel arrays, or build a DataList** (`c.createDataList(name, columns)` +
-`row.setValue(col, val)`), which is the platform-native way to carry tabular data:
+There are two reasons code reaches for `{ }` — a **map/lookup** and a **set of rows.** Here is the
+workflow-native way to do each (the ban is incomplete without these).
+
+**Need a key → value map / lookup? Use `c.createData()` (`.get` / `.set`), never an object literal:**
 
 ```js
-// ✓ RIGHT — a DataList: columns + one insertRecord() per row, setValue() per field
-var COLUMNS = ["itemId", "owner", "sortOrder"];
-var seed = c.createDataList("checklistSeed", COLUMNS);
+// ✓ a map WITHOUT { } — c.createData() (real: EmailDB contacts.js, getSegmentId cache)
+var segs = c.createData();
+var segmentId = segs.get(name);
+if (segmentId == null) {
+    segmentId = lookUpSegmentId(name);
+    segs.set(name, segmentId);
+}
+```
 
-var row1 = seed.insertRecord();
-row1.setValue("itemId", "title-keyword-first");
-row1.setValue("owner", "sam");
-row1.setValue("sortOrder", 1);
+**Need to create / seed rows? Build each record off the DataSet** — `createRecord()` → `set()` /
+`setDate()` → `insertRecord()` — **with find-or-create for idempotency.** This is the direct
+replacement for an array-of-objects seed:
 
-var row2 = seed.insertRecord();
-row2.setValue("itemId", "desc-unique");
-row2.setValue("owner", "sam");
-row2.setValue("sortOrder", 2);
-// ... then seed.getDataSet-style bulkInsert, etc.
+```js
+// ✓ RIGHT — rows without object literals (real: EmailDB contacts.js, importFile)
+var ds = pal.getDataSet("contacts");
+var rec = ds.findRecord("email", email);    // find-or-create: don't duplicate on re-run
+if (rec == null) {
+    rec = ds.createRecord();                 // empty record off the DataSet — no { }
+    rec.set("email", email);                 // .set(col, value) per field
+    rec.set("firstName", firstName);
+    rec.set("status", "Active");
+    rec.setDate("createDate", new Date());   // .setDate() for date columns
+    ds.insertRecord(rec);                    // insert; returns the new id
+}
+```
 
-// ✓ ALSO FINE — parallel arrays of primitives for small fixed data
+For a fixed list to hand to a payload or job, a **DataList** carries rows the same way
+(`c.createDataList(name, cols)` + `row.set(col, val)`); for small constant data, **parallel arrays of
+primitives** are fine:
+
+```js
+// ✓ DataList — columns + insertRecord().set() per field (real: EmailDB contacts.js, sendSingle)
+var list = c.createDataList("emailIds", ["emailId"]);
+list.insertRecord().set("emailId", id);
+
+// ✓ parallel arrays of primitives for small fixed data
 var ITEM_IDS = ["title-keyword-first", "desc-unique"];
 var OWNERS   = ["sam", "sam"];
-var ORDERS   = [1, 2];
 ```
 
 ### Confirmed safe (proven in production workflows)
@@ -74,8 +96,8 @@ var ORDERS   = [1, 2];
 `var`; classic `for (var i = 0; i < n; i++)`; `if` / `switch`; **function declarations**
 (`function name(args) { }`); **array literals of primitives** (`var COLS = ["a", "b"];`); string
 concatenation (`"x " + y`); array indexing (`a[i]`) and `.length`; and the platform DataSet / DataView
-/ DataList APIs (`pal.getDataSet`, `c.createDataList`, `insertRecord`, `setValue`, `bulkInsert`,
-`getRecords`, filters, …).
+/ DataList APIs (`pal.getDataSet`, `createRecord`, `c.createData`, `c.createDataList`, `insertRecord`,
+`set` / `setDate`, `findRecord`, `getRecords`, filters, …).
 
 ### ❌ `let` / `const` are not available
 
@@ -217,6 +239,28 @@ All dataset/dataview reads and writes. Lives in `data/` files included via `@inc
 (`data/lists`, `data/exchanges`). Library/data functions shared across workflows take everything as
 arguments — no hidden dependence on globals.
 
+### Splitting into multiple workflows (a scaling pattern, not a default)
+
+A **single `run()` / `main.js` is correct** for a focused pal — don't split for its own sake. But when
+a pal grows to **many distinct feature areas**, a large pal splits into **per-feature workflow files**,
+each with its own `run(controller)` + globals + action `switch`, plus a **`console` hub** workflow.
+Feature workflows delegate any action they don't handle **back to the hub**:
+
+```js
+// real: EmailDB campaigns.js — a feature workflow's run() switch
+switch (c.getAction()) {
+    case "getCampaigns":        getCampaigns();       break;
+    case "saveCampaignDraft":   saveCampaignDraft();  break;
+    // ... this workflow's own actions ...
+    default:
+        return c.switchToWorkflow("console", c.getAction());   // hand unknown actions to the hub
+}
+```
+
+EmailDB does this across `campaigns.js`, `contacts.js`, `segments.js`, `surveys.js`,
+`emailTemplates.js`, all hubbed on `console.js`. The three layers above still apply **within** each
+workflow — splitting by feature is orthogonal to the presentation/service/data split.
+
 ---
 
 ## DataSets, DataViews & DataLists
@@ -241,6 +285,9 @@ var item = pal.getDataView("listItems").createFilter();
 item.selectColumns(["itemId", "name"]);
 item.addEqual("itemId", id);
 var record = pal.getDataView("listItems").findRecord(item);
+
+// shorthand: findRecord(column, value) — single equality, no filter object needed
+var contact = pal.getDataSet("contacts").findRecord("email", email);   // real: EmailDB contacts.js
 ```
 
 **Boolean grouping** — `(friendId = X AND shareType = editor) OR (friendId = X AND favorited = true)`:
