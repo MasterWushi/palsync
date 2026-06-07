@@ -67,8 +67,8 @@ If the percent must come from inline JS instead of EL: put it in a `data-pct` at
 
 ```css
 .btn { font: 500 0.875rem/1 "Hanken Grotesk", system-ui; border-radius: var(--r-pill);
-       padding: 11px 20px; border: 1px solid transparent; cursor: pointer;
-       text-decoration: none; display: inline-flex; align-items: center; gap: 7px;
+       padding: 12px 24px; border: 1px solid transparent; cursor: pointer;
+       text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
        transition: transform 0.12s var(--ease), box-shadow 0.18s var(--ease),
                    background 0.15s var(--ease), border-color 0.15s var(--ease); }
 .btn:active { transform: translateY(1px); }
@@ -113,7 +113,7 @@ The accent-tinted shadow on the primary makes it read as *the* action; the 1px h
 
 ```css
 .stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
-        padding: 20px 24px; display: flex; flex-direction: column; gap: 8px;
+        padding: 24px; display: flex; flex-direction: column; gap: 8px;
         box-shadow: var(--shadow-sm); }
 .eyebrow { font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); }
 .stat-value { font-size: 2.5rem; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1; }
@@ -135,8 +135,8 @@ Replaces the screenshot's stacked full-width status bars. Map status → chip wi
 ```
 
 ```css
-.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8125rem; font-weight: 500;
-        padding: 3px 10px; border-radius: var(--r-pill); }
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8125rem; font-weight: 500;
+        padding: 4px 12px; border-radius: var(--r-pill); }
 .chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.9; }
 .chip-good    { background: color-mix(in srgb, var(--good) 12%, transparent); color: var(--good); }
 .chip-warn    { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
@@ -172,7 +172,7 @@ Keep chips **inline on one row**, not stacked vertically. Three small chips in a
        border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
 .tbl th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted);
           text-align: left; font-weight: 600; padding: 12px 16px; background: var(--bg-sunken); }
-.tbl td { padding: 14px 16px; border-top: 1px solid var(--line); font-size: 0.875rem; color: var(--ink); }
+.tbl td { padding: 16px; border-top: 1px solid var(--line); font-size: 0.875rem; color: var(--ink); }
 .td-primary { font-weight: 500; }
 .td-muted { color: var(--ink-muted); }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -198,7 +198,7 @@ Give every `<td>` a `data-label` (above) so it can collapse to a key-value card 
 ```css
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 32px; }
 .page-title { font: 500 2.5rem/1.05 "Fraunces", Georgia, serif; letter-spacing: -0.01em; color: var(--ink); }
-.page-sub { font-size: 0.875rem; color: var(--ink-muted); margin-top: 6px; }
+.page-sub { font-size: 0.875rem; color: var(--ink-muted); margin-top: 8px; }
 ```
 
 No breadcrumb, no description paragraph, no secondary toolbar unless the spec needs it. A count (`4 active`) replaces a sentence.
@@ -247,8 +247,8 @@ Inner content only (the outer shell holds the Bootstrap wrapper — see `palbuil
 ```
 
 ```css
-.field-label { display: block; font-size: 0.8125rem; color: var(--ink-soft); margin-bottom: 6px; }
-.field { width: 100%; font-size: 0.875rem; padding: 10px 14px; border: 1px solid var(--line);
+.field-label { display: block; font-size: 0.8125rem; color: var(--ink-soft); margin-bottom: 8px; }
+.field { width: 100%; font-size: 0.875rem; padding: 12px 16px; border: 1px solid var(--line);
          border-radius: var(--r-sm); background: var(--surface); color: var(--ink); }
 .field:focus { outline: none; border-color: var(--accent);
                box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -369,7 +369,7 @@ Mobile and desktop are parallel primary tracks. Three things cover most cases: c
   .tbl tr { border: 1px solid var(--line); border-radius: var(--r-md);
             margin-bottom: 12px; background: var(--surface); }
   .tbl td { border: none; display: flex; justify-content: space-between;
-            align-items: center; gap: 16px; padding: 10px 16px; }
+            align-items: center; gap: 16px; padding: 12px 16px; }
   .tbl td::before { content: attr(data-label); font-size: 0.75rem; font-weight: 600;
                     text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); }
   .num { text-align: right; }
@@ -419,9 +419,9 @@ The happy path is one of four states. Design loading, empty (§7), and error too
 ```css
 .skeleton { display: block; background: var(--bg-sunken); border-radius: var(--r-sm);
             position: relative; overflow: hidden; }
-.skeleton + .skeleton { margin-top: 10px; }
+.skeleton + .skeleton { margin-top: 8px; }
 .skeleton-line   { height: 0.9rem; }
-.skeleton-title  { height: 1.4rem; margin: 6px 0; }
+.skeleton-title  { height: 1.4rem; margin: 8px 0; }
 .skeleton-circle { width: 76px; height: 76px; border-radius: 50%; flex-shrink: 0; }
 .skeleton::after {
   content: ""; position: absolute; inset: 0; transform: translateX(-100%);
@@ -447,7 +447,7 @@ The happy path is one of four states. Design loading, empty (§7), and error too
 
 ```css
 .state-error { display: flex; flex-direction: column; align-items: center; gap: 12px;
-               padding: 56px 24px; text-align: center; }
+               padding: 64px 24px; text-align: center; }
 .state-error-msg { font-size: 1rem; color: var(--ink-soft); }
 ```
 
@@ -475,7 +475,7 @@ The happy path is one of four states. Design loading, empty (§7), and error too
 /* shared by both */
 .field.is-error { border-color: var(--bad); }
 .field.is-error:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 18%, transparent); }
-.field-error { font-size: 0.8125rem; color: var(--bad); margin-top: 6px; }
+.field-error { font-size: 0.8125rem; color: var(--bad); margin-top: 8px; }
 ```
 
 Default to (a). Reach for (b) only when you truly need ARIA on the control, accepting that you lose `c:field`'s DataList binding on that element. Either way, say what to fix ("Enter a valid email"), not just "invalid". (See §8 and `palbuilder-frontend`.)
