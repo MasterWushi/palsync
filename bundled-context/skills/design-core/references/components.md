@@ -16,6 +16,7 @@ Pre-solved recipes for the components agents most often get wrong. All written f
 11. Calm charts (bar, sparkline)
 12. Responsive patterns (table→card, touch targets, fluid type)
 13. Loading & error states (skeleton, error block, field error, button busy)
+14. Scroll-reveal (entrance animations)
 
 ---
 
@@ -113,7 +114,7 @@ The accent-tinted shadow on the primary makes it read as *the* action; the 1px h
 
 ```css
 .stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
-        padding: 24px; display: flex; flex-direction: column; gap: 8px;
+        padding: 20px 24px; display: flex; flex-direction: column; gap: 8px;
         box-shadow: var(--shadow-sm); }
 .eyebrow { font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); }
 .stat-value { font-size: 2.5rem; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1; }
@@ -498,3 +499,58 @@ Default to (a). Reach for (b) only when you truly need ARIA on the control, acce
 ```
 
 Rules: skeletons for content that fills a layout; spinner only for in-place actions; error states stay calm and always offer a way forward. Never leave a blank surface while loading or a dead end on failure.
+
+---
+
+## 14. Scroll-reveal — entrance animations
+
+Static pages feel dead. Sections fade/slide in as they enter the viewport — the single lowest-effort, highest-impact polish step. Uses `IntersectionObserver` in an **external `.js`** (PalBuilder-safe) plus CSS transitions on the elements. One animation per element, never bounce or spring.
+
+**CSS — the transition classes.**
+
+```css
+/* elements start hidden, transition on reveal */
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.5s var(--ease), transform 0.5s var(--ease); }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+/* stagger children (set via inline --delay or JS) */
+.reveal[style*="--d"] { transition-delay: var(--d); }
+@media (prefers-reduced-motion: reduce) {
+  .reveal { transform: none; transition: opacity 0.4s ease; }
+}
+```
+
+**JS — external file (e.g. `reveal.js`, creatable via push).**
+
+```js
+// reveal.js — observe .reveal elements, add .visible on enter
+(function () {
+  var els = document.querySelectorAll('.reveal');
+  if (!els.length) return;
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        io.unobserve(e.target);       // animate once, not on every scroll
+      }
+    });
+  }, { threshold: 0.15 });
+  els.forEach(function (el) { io.observe(el); });
+})();
+```
+
+Note: uses `var` and `function` (not `const`/arrow) so it also survives if accidentally loaded in an older execution context. ES5 is safe everywhere. Load the script at the end of `<body>` or via `defer`.
+
+**Usage — add `class="reveal"` to sections and stagger children.**
+
+```html
+<section class="reveal">
+  <h2>Three steps to a signed file.</h2>
+</section>
+<div class="grid grid-3">
+  <article class="reveal" style="--d: 0s"><!-- step 1 --></article>
+  <article class="reveal" style="--d: 0.08s"><!-- step 2 --></article>
+  <article class="reveal" style="--d: 0.16s"><!-- step 3 --></article>
+</div>
+```
+
+That's it — three pieces (CSS class, external JS, `class="reveal"` on elements). Stagger siblings 60–80ms via `--d`. The page goes from static to alive in minutes. Never apply reveal to elements above the fold (the hero should be immediately visible, not fading in after a delay).

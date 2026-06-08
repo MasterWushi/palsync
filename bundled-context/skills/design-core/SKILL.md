@@ -17,6 +17,7 @@ Every design decision resolves through three layers, in priority order.
 
 **1. Spec overrides (highest).** Before building, read the spec for design intent and map it onto the house token slots:
 - *Explicit tokens* — "use #1a7f5a", "our font is Söhne", "tight/dense", "rounded" → overwrite that slot.
+- *Visual references* — screenshots of layouts, hero compositions, or inspiration sites carry more design direction than words ever can. If the spec includes images, match their **composition** (the spatial arrangement, the asymmetry, the breathing room) — not just their palette. A screenshot of a hero you admire communicates more than 500 words of tokens.
 - *Soft signals* — mood words ("calm", "serious", "playful") or named references ("make it feel like Linear") → nudge the few levers that exist (accent, radius, type weight, motion, whitespace). These work *within* the house style; they don't swap it for a different aesthetic. See "Mood, honestly" under Overrides for exactly what they can move.
 - The most common override is brand **color** and sometimes **font**. Everything else usually stays default.
 
@@ -38,6 +39,8 @@ These hold regardless of overrides. They are why the output reads as professiona
 - **Depth is subtle and warm.** Cards rest on a low warm shadow (`--shadow-sm`), deepening slightly on hover (`--shadow-md`); modals/dropdowns use `--shadow-lg`. Shadows are *low, soft, and warm-tinted* — felt more than seen. Never a hard, dark, large, or colored "glow" — that's the slop you're replacing. Hierarchy still comes mostly from tone shifts and 1px borders; the shadow is a finishing touch, not the structure. **On dark (the default for dark-locked pals — see Dark), shadows fade: separation comes from borders and surface tone instead, and the resting card shadow is dropped.**
 - **One primary action per view.** Exactly one filled/accent button. Everything else is secondary (tonal) or quiet (ghost). A screen with five loud buttons has none.
 - **Components are correct.** Progress rings render as real arcs (not broken), charts are calm (thin strokes, single accent, dashed reference lines — never heavy gridlines or rainbow series), layouts are real layouts — not a stack of cards pretending to be one. Use `references/components.md` rather than improvising the fiddly ones.
+- **Composition varies — no template defaults.** The left-text/right-image hero, the three-equal-column feature grid, and the identical-width stacked sections are AI's default layouts and they read as template-generated even with perfect tokens. Break them (see Composition section below).
+- **Every hero has a real visual.** A placeholder box or a generic stock photo is unfinished work. Product screenshots, editorial imagery, illustrations, or crafted SVGs — something real goes in the hero (see Visual assets below).
 - **Information has a hierarchy** (own section below) — one thing leads each screen; secondary detail is demoted or deferred, never laid out flat and equal-weight.
 - **Every data surface has its states.** Anything that loads designs its loading, empty, and error states too — not just the happy path. A blank screen while data loads, or an untouched white void on failure, is unfinished work.
 - **Content economy** (its own section below) — the floor includes saying less.
@@ -47,6 +50,8 @@ These hold regardless of overrides. They are why the output reads as professiona
 ## Content economy — say less
 
 > The single most common complaint about AI-generated UI: too many words, too many labels, too much on screen. Fix it here. Look at Mercury, Origin, Stoic, Acctual — confident interfaces say almost nothing. A screen earns each word.
+
+**Websites are glanced at, not read.** The H1 must communicate the offer in under 3 seconds — aim for ≤7 words. Credibility comes immediately after (logos, a stat, a one-line proof), not buried three sections down. Every section answers one question the scanner is asking: *what is this → why should I care → prove it → what do I do next* — in that order. If a visitor has to engage their critical brain to understand what they're looking at, you've already lost them.
 
 Rules:
 
@@ -98,6 +103,43 @@ Every surface that fetches data has four states, and the happy "loaded" path is 
 - **Field errors → red border + a tied message.** A `--bad` border on the input and a small `role="alert"` message beneath it (the `c:field` ARIA pattern from `palbuilder-frontend`). Say what to fix, not just "invalid".
 
 Match the loading state's shape to the real thing: a skeleton for a card grid looks like the card grid; a skeleton for a table looks like rows. A generic centered spinner over an empty page is the lazy default this skill replaces.
+
+---
+
+## Composition — break the template
+
+Correct tokens applied to a conventional layout still reads as a template. The left-text/right-image hero, the three-equal-column feature grid, and the identically-spaced stacked sections are AI's default compositions — and in 2026 people can *feel* them even if they can't articulate it. A well-themed template is not a designed website. Composition is the difference.
+
+**Vary the rhythm.** Not every section sits symmetrically inside `max-width`. Alternate the beat: narrow-centered statement → full-bleed image band → asymmetric 60/40 split → generous breathing space → staggered grid. The page should have a visual *arc*, not a metronome.
+
+**Anti-patterns — the AI default layouts to avoid:**
+- Left-text / right-image hero with two buttons. This is the single most overused AI layout. If you catch yourself building it, stop and choose a different composition.
+- Three equal columns for features (01, 02, 03). Feels like a PowerPoint deck.
+- Every section the same width, same padding, same structure. Monotonous.
+- No full-bleed moment — the entire page lives inside one container and never breaks out. Restrained is good; predictable is not.
+
+**Alternatives that work:**
+- *Centered single-column hero* — headline + sub + CTA, no side image at all. Let the type carry it. The best editorial sites do this (the type IS the design).
+- *Image-led hero* — full-bleed photography or video with overlaid text. The image sets the mood; the copy rides it.
+- *Asymmetric splits* — 60/40 or 70/30 instead of 50/50. One side clearly leads.
+- *Full-bleed dark/accent band* that interrupts the light canvas — creates a rhythm break and draws the eye. Your OBE "Three steps" dark section does this right.
+- *Centered impact statement* — one stat, one sentence, generous vertical space. Your "Nearly 70%" section is the strongest on the page because it breaks the template pattern and has a point of view.
+- *Staggered grid* — cards at different sizes or offsets instead of a symmetric n×n.
+
+**One section should surprise.** Every page should have at least one moment that breaks the established rhythm — a dark band in a light page, a full-width image, a giant centered number, a section with twice the normal vertical padding. This is what separates "designed" from "themed."
+
+---
+
+## Visual assets — no empty heroes
+
+A site with perfect tokens but no imagery is a skeleton. Images carry the emotional weight that type scales and color tokens can't.
+
+- **Every hero needs a real visual** — a product screenshot in context (device frame, angled mockup), an editorial photograph, an illustration, or at minimum a well-crafted SVG composition. A placeholder box or a stock photo of people shaking hands is unfinished work.
+- **Product screenshots show the real UI.** If the product isn't built yet, design a representative screenshot using this skill's own tokens and components — it's better than a gray box with "PRODUCT UI PLACEHOLDER."
+- **Images earn their space.** Don't scatter decorative illustrations on every section. One strong hero image plus one or two supporting visuals is better than stock art on every block.
+- **Video backgrounds for heroes** are a high-impact, low-effort way to add life: a subtle 6–10s looping MP4/WebM, muted, no autoplay audio. Keep the motion gentle (drifting clouds, slow parallax) — it's atmosphere, not a distraction. Recipe in `references/components.md` §14.
+
+If the spec provides no imagery and no reference, *say so* — "the hero needs a product screenshot or visual asset; placeholder is temporary." Don't silently ship a text-only hero and call it done.
 
 ---
 
@@ -229,7 +271,11 @@ One `.icon` class colors and sizes every icon. **Use icons sparingly** — conte
 
 ## Motion
 
-Interactions must feel clickable. Buttons lift 1px on hover with a slightly stronger shadow and press down on `:active`; cards lift 2px on hover with a deeper shadow. Keep it fast (120–180ms) on `--ease`. Animate `transform`, `box-shadow`, `background`, `border-color` — never layout properties. Respect `@media (prefers-reduced-motion: reduce)` by dropping transforms. See the button recipe in `references/components.md` for the exact hover/active/focus states.
+**Micro-interactions.** Buttons lift 1px on hover with a slightly stronger shadow and press down on `:active`; cards lift 2px on hover with a deeper shadow. Keep it fast (120–180ms) on `--ease`. Animate `transform`, `box-shadow`, `background`, `border-color` — never layout properties. See the button recipe in `references/components.md` for the exact hover/active/focus states.
+
+**Scroll-reveal.** Static pages feel dead. Sections and their children should fade/slide in as they enter the viewport — opacity 0→1, translateY 24px→0, 0.5s duration, stagger children 60–80ms apart. Use `IntersectionObserver` in an **external `.js` file** (PalBuilder-safe — avoids inline-`<script>` `${}` collision) with CSS transitions on the elements. One animation per element, never bounce or spring. This is the single lowest-effort, highest-impact polish step. Recipe in `references/components.md` §14.
+
+**Respect `prefers-reduced-motion`.** Drop transforms entirely (keep opacity if needed, it's non-motion). Both micro-interactions and scroll-reveal must honor this.
 
 ## Responsive
 
@@ -244,7 +290,7 @@ Mobile and desktop are **parallel primary tracks**, not a desktop layout that re
 
 ## Component recipes
 
-For anything beyond trivial markup — and **always** for the fiddly ones (progress rings, calm charts, stat cards, data tables, status chips, modals, empty states, loading skeletons, error states, page headers, buttons) — read `references/components.md` and adapt the recipe. These are pre-solved in PalBuilder-valid form (self-closed voids, no inline-`<script>` `${}`, the `label`+`role="alert"` ARIA pattern). Don't reinvent the progress-ring math or improvise a chart library; both are the exact things that render broken or sloppy when winged.
+For anything beyond trivial markup — and **always** for the fiddly ones (progress rings, calm charts, scroll-reveal, stat cards, data tables, status chips, modals, empty states, loading skeletons, error states, page headers, buttons) — read `references/components.md` and adapt the recipe. These are pre-solved in PalBuilder-valid form (self-closed voids, no inline-`<script>` `${}`, the `label`+`role="alert"` ARIA pattern). Don't reinvent the progress-ring math or improvise a chart library; both are the exact things that render broken or sloppy when winged.
 
 ---
 
@@ -276,6 +322,14 @@ After building, before saying it's finished, run this checklist out loud and fix
 
 **States**
 15. For anything that loads data: are the loading (skeleton), empty, and error states designed — not just the happy path? Is the error state calm (no red wall) with a retry, and `role="alert"` set?
+
+**Composition & assets**
+16. Is the hero a left-text/right-image layout? If yes, you fell into the template default — choose a different composition (centered, image-led, asymmetric).
+17. Does the page have at least one rhythm break — a full-bleed band, a centered impact statement, a section that surprises? Or is every section the same width and padding?
+18. Does the hero have a real visual asset (product screenshot, editorial image, illustration) — not a placeholder or a text-only block?
+
+**Fidelity to reference**
+19. If visual references were provided (screenshots, inspiration sites), compare the output's *composition* to them — does the spatial arrangement, hierarchy, and feel match? If the layout defaulted to a template, call it out and close the gap.
 
 ---
 
