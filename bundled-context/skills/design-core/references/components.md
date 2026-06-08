@@ -114,7 +114,7 @@ The accent-tinted shadow on the primary makes it read as *the* action; the 1px h
 
 ```css
 .stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
-        padding: 20px 24px; display: flex; flex-direction: column; gap: 8px;
+        padding: 24px; display: flex; flex-direction: column; gap: 8px;
         box-shadow: var(--shadow-sm); }
 .eyebrow { font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); }
 .stat-value { font-size: 2.5rem; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1; }
