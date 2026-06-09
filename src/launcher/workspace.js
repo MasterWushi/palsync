@@ -3,7 +3,6 @@
 // user CLAUDE.md across the pull), write .palsync.json, and register the MCP server. After this
 // the directory is a ready Claude Code workspace. The lock is left HELD — the MCP server (booted
 // by Claude Code) owns its lifecycle/release; the launcher does not release on exit.
-const fs = require("fs/promises");
 const path = require("path");
 const os = require("os");
 const { pull } = require("../core/pull");
@@ -22,21 +21,28 @@ function defaultWorkspaceDir(palName) {
     return path.join(os.homedir(), "PalBuilder", slug(palName));
 }
 
-async function readIfExists(p) {
-    try { return await fs.readFile(p, "utf8"); } catch (e) { if (e.code === "ENOENT") return null; throw e; }
-}
-
 // Run the full setup. Returns a summary. Throws if the pal is locked by another user.
 //   withDesign (default false) opts the workspace into the design skills; see contextInject.
 //   agent ("claude" default | "codex") picks the injection destinations and MCP registration path.
 async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false, agent = "claude", log = () => {} }) {
-    const claudePath = path.join(workspaceDir, "CLAUDE.md");
 
-    // Preserve a user's existing CLAUDE.md across the pull (pull wipes the dir).
-    const priorClaude = await readIfExists(claudePath);
+    // Collision guard. The default workspace path is ~/PalBuilder/<slug(palName)>/ — stable per
+    // pal name. If a different pal already lives in this dir (.palsync.json present with a
+    // different palGuid), refuse rather than mix two pals' state into one workspace.
+    try {
+        const existing = await palsyncfile.read(workspaceDir);
+        if (existing && existing.palGuid && existing.palGuid !== sel.pal.guid) {
+            throw new Error(
+                "Workspace " + workspaceDir + " already belongs to a different pal: \"" +
+                existing.palName + "\" (" + existing.palGuid + ") on " + existing.cloudUrl + ".\n" +
+                "Choose a different workspace directory, or remove that workspace if you no longer need it."
+            );
+        }
+    } catch (e) { if (e.code !== "ENOENT") throw e; /* no .palsync.json = fresh workspace, fine */ }
 
     log("pulling " + sel.pal.name + " → " + workspaceDir);
-    const { resolved, written } = await pull(session, sel.pal.guid, workspaceDir);
+    const { resolved, written, removed } = await pull(session, sel.pal.guid, workspaceDir);
+    if (removed && removed.length) log("  sync removed " + removed.length + " file(s) deleted on server");
 
     // auto-lock (own Webstart-lock reclaim is automatic; setup never force-overrides a PalBuilder lock)
     log("locking pal");
@@ -51,8 +57,9 @@ async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false,
         throw new Error("Could not lock \"" + sel.pal.name + "\" (" + (lk.blocked || "unknown") + "). Unlock and close it in PalBuilder, then re-run palsync.");
     }
 
-    // restore the user's CLAUDE.md (if any) before injecting, so the managed block merges in
-    if (priorClaude != null) await fs.writeFile(claudePath, priorClaude, "utf8");
+    // CLAUDE.md is no longer wiped by pull (sync only touches files inside the 13 manifest
+    // folders + pal.json), so the prior save/restore hack is unnecessary — inject() reads the
+    // user's existing CLAUDE.md directly and merges its managed block in place.
     log("injecting CLAUDE.md + skills" + (withDesign ? " (with design system)" : "") +
         (agent === "codex" ? " + AGENTS.md/.agents (Codex)" : ""));
     const injected = await contextInject.inject(workspaceDir, { palName: sel.pal.name, withDesign, agent });
@@ -97,8 +104,7 @@ async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false,
         agent,
         mcpConfig: reg.filePath || null,   // .mcp.json path (Claude) or null (Codex uses its own config)
         mcpRegistration: reg,
-        record,
-        userClaudePreserved: priorClaude != null
+        record
     };
 }
 

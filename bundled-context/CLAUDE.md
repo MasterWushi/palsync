@@ -16,18 +16,44 @@ a warning.
 ## Workspace layout
 
 ```
-[workspace]/.pals/[PALID]/
-    pages/        # XHTML fragments (the c:-tag markup)
-    workflows/    # server-side JS — run(controller) entry points
-    scripts/      # client-side JS
+~/PalBuilder/<pal-name>/        # stable path; relaunching the same pal lands here
+    pal.json                    # the pal manifest (pull-managed)
+    pages/                      # XHTML fragments — the c:-tag markup
+    fragments/                  # reusable fragments (modals, partials)
+    workflows/                  # server-side JS — run(controller) entry points
+    scripts/                    # client-side JS
+    styles/                     # CSS
+    images/  emails/  attachments/  documents/
+    datasets/  dataviews/  data/  datalists/    # JSON passthrough (managed in PalBuilder)
+    .palsync.json               # palsync sync state (lock holder, drift marker, etc.)
+    .claude/skills/             # palsync-injected skills (palbuilder-frontend/backend, …)
+    CLAUDE.md  CLAUDE.palsync.md
+    .mcp.json                   # MCP server config (palsync-managed)
 ```
 
-- `PALID` is a long numeric ID, not a name. **Before editing, confirm which
-  PALID you are working in.** If a `pal-map.md` exists at the workspace root,
-  read it to map IDs to pal names; otherwise ask which pal.
-- `.pals/` is managed by the PalBuilder VS Code extension. Edit files in place;
-  do not rename, move, or restructure the directory. Do not create files outside
-  the pal's existing folder convention.
+**Pull is SYNC, not WIPE — what survives a `pal_pull`:**
+
+- **Pull-managed (server-tracked)** — `pal.json` + everything inside the **13 manifest folders**
+  above (`pages/`, `fragments/`, `scripts/`, `styles/`, `images/`, `emails/`, `attachments/`,
+  `documents/`, `workflows/`, `datasets/`, `dataviews/`, `data/`, `datalists/`). Pull overwrites
+  these from the server and **removes** local files that no longer exist in the server manifest.
+  Do NOT put your own notes, scratch files, or non-pal assets inside these folders — they will
+  be deleted as stale on the next pull.
+- **Untouched by pull** — anything at the workspace root that isn't `pal.json`, and any
+  user-created subdir that isn't one of the 13 above. Project notes, specs, reference images,
+  design assets, etc. go HERE:
+  ```
+  ~/PalBuilder/<pal-name>/spec.md             # ← safe; pull never touches this
+  ~/PalBuilder/<pal-name>/references/*.png    # ← safe; pull never touches this
+  ~/PalBuilder/<pal-name>/notes/              # ← safe; pull never touches this
+  ```
+  palsync-managed files (`.palsync.json`, `.mcp.json`, `.claude/`, `CLAUDE.md`,
+  `CLAUDE.palsync.md`) are also untouched by pull — they are refreshed only when the launcher
+  re-runs setup.
+
+**Bottom line:** the workspace is a stable project directory. Edit pal code in place inside
+the 13 folders, and keep project notes / references / assets at the root or in your own
+subfolders. Pull refreshes the former; the latter survive forever.
 
 ---
 
