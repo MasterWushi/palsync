@@ -15,7 +15,10 @@ async function buildContext(workspaceDir, { idleMs, log = () => {}, acquireLock 
     }
     const session = await authenticate(record.cloudUrl, record.username, password);
 
-    const lifecycle = new LockLifecycle(session, record.palGuid, idleMs !== undefined ? { idleMs, log } : { log });
+    // exitOnIdle:false (also the constructor default) — the MCP server's lifetime belongs to
+    // its client; idle releases only the lock, and the next tool call re-acquires it.
+    const lifecycle = new LockLifecycle(session, record.palGuid,
+        idleMs !== undefined ? { idleMs, log, exitOnIdle: false } : { log, exitOnIdle: false });
 
     const ctx = {
         session,

@@ -136,11 +136,13 @@ const TOOLS = [
         inputShape: { confirmOverride: z.string().optional() },
         async run(ctx, { confirmOverride } = {}) {
             const palName = ctx.record.palName;
-            let lk = await lock.acquireByGuid(ctx.session, ctx.record.palGuid, { force: false });
+            // Route through the lifecycle (not core/lock directly) so an explicit pal_lock clears
+            // a prior pal_unlock's userReleased flag and restarts the idle timer.
+            let lk = await ctx.lifecycle.acquire({ force: false });
             if (lk.acquired) return { locked: true, byUs: true, message: "Lock held by you" + (lk.reclaimed ? " (reclaimed)" : "") + "." };
             // blocked — if the user typed the exact override phrase, attempt force (currently dormant).
             if (confirmOverride === overridePhrase(palName)) {
-                lk = await lock.acquireByGuid(ctx.session, ctx.record.palGuid, { force: true });
+                lk = await ctx.lifecycle.acquire({ force: true });
                 if (lk.acquired) return { locked: true, byUs: true, forced: true, message: "Lock force-acquired." };
             }
             return { locked: false, blocked: lk.blocked, holder: lk.holder, since: lk.since,
@@ -153,7 +155,9 @@ const TOOLS = [
         inputShape: {},
         async run(ctx) {
             if (ctx.session.lockInfo) {
-                const rel = await lock.releaseByGuid(ctx.session, ctx.record.palGuid);
+                // userRequested: an explicit unlock must stick — tool activity won't re-acquire
+                // past it (only an explicit pal_lock re-arms the lifecycle).
+                const rel = await ctx.lifecycle.release("user-request", { userRequested: true });
                 return { unlocked: rel.released, message: rel.released ? "Lock released." : "No lock held." };
             }
             const st = await lock.statusByGuid(ctx.session, ctx.record.palGuid);
