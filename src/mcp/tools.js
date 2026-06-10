@@ -74,13 +74,20 @@ const TOOLS = [
             if (!st.locked) lockMsg = "not locked";
             else if (st.kind === "gui") lockMsg = (st.byUs ? "checked out by you in PalBuilder" : "locked by " + st.holder) + " since " + st.since;
             else lockMsg = "held by this palsync session";
+            // Both directions: server-vs-last-pull (above) AND disk-vs-last-pull (below).
+            const d = diffWorkspace(ctx.record, ctx.workspaceDir);
+            const localMsg = (d.dirty || d.added.length)
+                ? "Local: UN-PUSHED changes on disk —\n" + describeDiff(d)
+                : "Local: no un-pushed changes.";
             const message =
                 "Pal: " + ctx.record.palName + " (" + ctx.record.palGuid + ")\n" +
                 (serverNewer ? "Server IS NEWER than your last pull — run pal_pull before pushing.\n" : "In sync with your last pull.\n") +
                 "  your marker  : " + ctx.record.lastModifiedDate + "\n" +
                 "  server marker: " + (live ? live.lastModifiedDate : "(unknown)") + "\n" +
+                localMsg + "\n" +
                 "Lock: " + lockMsg;
-            return { message, serverNewer, storedMarker: ctx.record.lastModifiedDate, liveMarker: live && live.lastModifiedDate, lock: st };
+            return { message, serverNewer, storedMarker: ctx.record.lastModifiedDate, liveMarker: live && live.lastModifiedDate,
+                     localChanges: { dirty: d.dirty, changed: d.changed, added: d.added, deleted: d.deleted }, lock: st };
         }
     },
     {

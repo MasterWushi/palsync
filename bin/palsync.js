@@ -16,6 +16,32 @@ if (argv.includes("--version") || argv.includes("-v")) {
     process.exit(0);
 }
 
+// Subcommands: `palsync push|pull|status` — headless sync that needs NO MCP server and NO agent
+// (the recovery path when a session ends before a push, and a plain terminal workflow). They
+// skip the launcher preflight entirely: no Claude/Codex required, just .palsync.json + keychain.
+const SUBCOMMANDS = ["push", "pull", "status"];
+if (SUBCOMMANDS.includes(argv[0])) {
+    require("../src/cli/syncCommands").run(argv[0], argv.slice(1))
+        .then(code => process.exit(code))
+        .catch(err => {
+            process.stderr.write("palsync " + argv[0] + " failed: " + (err && err.message ? err.message : err) + "\n");
+            process.exit(1);
+        });
+    return; // launcher flow below never runs for subcommands
+}
+if (argv[0] === "help" || argv.includes("--help") || argv.includes("-h")) {
+    process.stdout.write(
+        "palsync — PalBuilder + AI agents\n\n" +
+        "  palsync                 launch: login → pick pal → pull+lock → inject skills → open agent\n" +
+        "  palsync push|pull|status   headless sync for an existing workspace (no MCP/agent needed)\n" +
+        "  palsync --with-design   inject the design system for UI work\n" +
+        "  palsync --agent codex   use Codex instead of Claude Code\n" +
+        "  palsync --version       print the build\n\n" +
+        require("../src/cli/syncCommands").USAGE + "\n"
+    );
+    process.exit(0);
+}
+
 // --with-design / -d: opt in to injecting the Nimblewire design system (design-core) for UI work.
 // Default OFF so backend/bugfix sessions stay lean. Parsed here, threaded through run() → setup().
 const withDesign = argv.includes("--with-design") || argv.includes("-d");

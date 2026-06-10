@@ -1,0 +1,102 @@
+"use strict";
+// Standalone sync subcommands: `palsync push|pull|status` — the fallback path that works with
+// NO MCP server and NO agent. If the MCP server died mid-session (or you just prefer the
+// terminal), these read .palsync.json from the workspace, authenticate from the OS keychain,
+// and run the EXACT same tool logic the MCP server exposes (src/mcp/tools.js), so semantics —
+// drift guard, per-file refusals, preserve-on-pull, uncreatable-type backstop — are identical.
+//
+// push acquires the pal lock (the server requires it to save) and releases it afterwards by
+// default, since there is no session to keep holding it; --keep-lock leaves it held (e.g. when
+// you're about to relaunch palsync and want to stay the holder).
+const path = require("path");
+const { buildContext } = require("../mcp/context");
+const { TOOLS } = require("../mcp/tools");
+const lock = require("../core/lock");
+
+const USAGE = [
+    "Usage:",
+    "  palsync push   [--force] [--keep-lock] [--dir <workspace>]   Push local changes (no MCP server needed)",
+    "  palsync pull   [--force] [--dir <workspace>]                 Pull/sync from the server",
+    "  palsync status [--dir <workspace>]                           Server drift, local changes, lock holder",
+    "",
+    "  --force      push: override the server-drift refusal · pull: overwrite locally-modified files",
+    "  --keep-lock  push: keep holding the pal lock after the push (default releases it)",
+    "  --dir <ws>   workspace directory (default: current directory)",
+    "",
+    "The workspace must have been set up once by `palsync` (it needs .palsync.json + keychain login)."
+].join("\n");
+
+function parseFlags(argv) {
+    const flags = { force: false, keepLock: false, dir: undefined, help: false };
+    for (let i = 0; i < argv.length; i++) {
+        const a = argv[i];
+        if (a === "--force" || a === "-f") flags.force = true;
+        else if (a === "--keep-lock") flags.keepLock = true;
+        else if (a === "--help" || a === "-h") flags.help = true;
+        else if (a === "--dir") { flags.dir = argv[++i]; if (!flags.dir) throw new Error("--dir requires a value"); }
+        else if (a.startsWith("--dir=")) flags.dir = a.slice("--dir=".length);
+        else throw new Error("Unknown flag for this subcommand: " + a + "\n\n" + USAGE);
+    }
+    return flags;
+}
+
+function toolByName(name) { return TOOLS.find(t => t.name === name); }
+
+async function buildCliContext(dir) {
+    try {
+        // acquireLock:false — no session lifecycle here. push takes (and we then release) the
+        // lock itself; pull and status never need one.
+        return await buildContext(dir, { acquireLock: false, log: (m) => process.stderr.write("[palsync] " + m + "\n") });
+    } catch (e) {
+        if (e && e.code === "ENOENT") {
+            throw new Error(
+                "No .palsync.json found in " + dir + " — this isn't a palsync workspace yet.\n" +
+                "Run `palsync` once to log in and set it up, or point at the workspace with --dir."
+            );
+        }
+        throw e;
+    }
+}
+
+// Returns the process exit code (0 ok, 1 refused/failed).
+async function run(cmd, argv) {
+    const flags = parseFlags(argv);
+    if (flags.help) { console.log(USAGE); return 0; }
+    const dir = path.resolve(flags.dir || process.cwd());
+    const ctx = await buildCliContext(dir);
+    console.log("palsync " + cmd + " — " + ctx.record.palName + " @ " + ctx.record.cloudUrl + "\n");
+
+    if (cmd === "status") {
+        const res = await toolByName("pal_status").run(ctx, {});
+        console.log(res.message);
+        return 0;
+    }
+
+    if (cmd === "pull") {
+        const res = await toolByName("pal_pull").run(ctx, { force: flags.force });
+        console.log(res.message);
+        return res.pulled ? 0 : 1;
+    }
+
+    if (cmd === "push") {
+        const res = await toolByName("pal_push").run(ctx, { force: flags.force });
+        console.log(res.message);
+        // Release the lock the push acquired — no live session remains to hold it. (If the
+        // push was refused before locking, releaseByGuid is a clean no-op.)
+        if (!flags.keepLock && ctx.session.lockInfo) {
+            try {
+                const rel = await lock.releaseByGuid(ctx.session, ctx.record.palGuid);
+                if (rel.released) console.log("\nLock released (use --keep-lock to stay the holder).");
+            } catch (e) {
+                console.error("Warning: lock release failed (" + (e && e.message ? e.message : e) + ") — your own next session auto-reclaims it.");
+            }
+        } else if (flags.keepLock && ctx.session.lockInfo) {
+            console.log("\nLock kept (you still hold " + ctx.record.palName + ").");
+        }
+        return res.pushed ? 0 : 1;
+    }
+
+    throw new Error("Unknown subcommand: " + cmd + "\n\n" + USAGE);
+}
+
+module.exports = { run, parseFlags, USAGE };

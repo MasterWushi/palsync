@@ -67,6 +67,35 @@ Now talk to Claude. Ask for a change, then say *"push it."*
 | `--with-design` | `-d` | Inject the **Nimblewire design system** (`design-core`) into the workspace for UI work. |
 | `--agent <name>` | | Choose the coding agent: `claude` (default) or `codex`. |
 
+## Headless subcommands (no MCP server, no agent)
+
+If a session ends before a push (or you just prefer the terminal), the same sync engine is
+available directly — it reads `.palsync.json` from the workspace and authenticates from your
+OS keychain:
+
+```sh
+palsync push     # push local changes; releases the lock after (use --keep-lock to hold it)
+palsync pull     # sync from the server (refuses to overwrite un-pushed edits; --force overrides)
+palsync status   # server drift + un-pushed local changes (per file) + lock holder
+```
+
+All take `--dir <workspace>` (default: current directory). Semantics are identical to the MCP
+tools — same drift guards, same preserve-on-pull, same uncreatable-type backstop.
+
+## Sync safety (what protects your work)
+
+- **Pull is a sync, not a wipe.** New un-pushed files inside the manifest folders are
+  **preserved** and their `pal.json` entries carried forward, so the next push still ships them.
+  A local file is deleted only when the server actually deleted it.
+- **Pull refuses rather than overwrites.** If server-tracked files have un-pushed local edits,
+  pull refuses and names the files (push first, or force to discard).
+- **The launcher checks too.** Re-running `palsync` into a workspace with un-pushed changes
+  prompts: push first (recommended), pull anyway, skip the pull, or quit — never a silent
+  overwrite. If local *and* server both changed, it says who saved on the server and offers a
+  force-push/overwrite/skip choice.
+- **The MCP server never exits on its own.** Idle releases only the pal lock (a courtesy to
+  teammates); the next tool call re-locks. The server lives exactly as long as Claude Code does.
+
 The PalBuilder coding skills (`palbuilder-frontend`, `palbuilder-backend`) are **always** injected.
 The **design skills are opt-in (default off)** to keep Claude's context lean for backend and bugfix
 sessions that don't touch UI. Pass `--with-design` (or `-d`) when you're building or styling an
@@ -105,8 +134,8 @@ registration + launch commands rather than failing.
 | Tool | What it does |
 |------|--------------|
 | `pal_push` | Push local changes to the server. Refuses if the server advanced since your last pull (drift) unless forced. |
-| `pal_pull` | Refresh the pal from the server. |
-| `pal_status` | Is the server newer than your last pull? Who holds the lock? |
+| `pal_pull` | Sync the pal from the server. Preserves new un-pushed local files; refuses (naming files) if it would overwrite un-pushed edits. |
+| `pal_status` | Is the server newer than your last pull? Any un-pushed local changes? Who holds the lock? |
 | `pal_lock` | Acquire the lock (auto-reclaims your own stale lock). |
 | `pal_unlock` | Release the lock (never breaks another user's). |
 
