@@ -135,9 +135,20 @@ registration + launch commands rather than failing.
 |------|--------------|
 | `pal_push` | Push local changes to the server. Refuses if the server advanced since your last pull (drift) unless forced. |
 | `pal_pull` | Sync the pal from the server. Preserves new un-pushed local files; refuses (naming files) if it would overwrite un-pushed edits. |
+| `pal_test` | Run the server's real workflow **compile** (catches errors the save API can't) and open a **live preview** in your browser. |
 | `pal_status` | Is the server newer than your last pull? Any un-pushed local changes? Who holds the lock? |
 | `pal_lock` | Acquire the lock (auto-reclaims your own stale lock). |
 | `pal_unlock` | Release the lock (never breaks another user's). |
+
+### `pal_test` — validation + live preview
+
+PalBuilder's save API returns **cached** workflow validation, so a workflow can push
+"successfully" yet fail to compile in the builder. `pal_test` runs the builder's real
+`Test<Console|Web|Pal>.do` and returns the **fresh** compile result to the agent, then opens a
+live preview of the pal in your default browser. The preview URL carries your credentials, so
+it is opened **locally and never shown** to the agent or written to any log. (A console pal
+renders inside the CloudPiston console shell; a web pal renders directly.) Available headless
+too: `palsync test [--workflow console|web|transaction] [--no-preview]`.
 
 ## Limitations
 

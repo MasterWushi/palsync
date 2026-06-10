@@ -141,16 +141,26 @@ it contains several endpoints **never ported into palsync**:
 palsync is a tool for the existing team (everyone has a login), so the accessibility track
 (starters, chat-only surfaces) drops to "later" and the close-the-loop track is everything:
 
-| Order | Item | Size | Why this order |
+| Order | Item | Size | Status |
 |---|---|---|---|
-| 1 | Run the `Test<Type>.do` probe | XS | One command, unlocks the design of 2–4; needs a go-ahead or a test pal |
-| 2 | `pal_test` / `pal_preview` (token URL + fresh validation) | M | The probe's endpoint gives BOTH the render loop and workflow-compile truth |
-| 3 | `pal_validate` (local lint: workflow-JS subset + c: attribute whitelists) | M | Still worth it — instant, offline, pre-push; complements server truth |
+| 1 | Run the `Test<Type>.do` probe | XS | ✅ DONE — confirmed live on ISR (fresh validation + token URL; console renders inside the platform shell via encrypted AJAX) |
+| 2 | `pal_test` (fresh server validation + browser preview) | M | ✅ DONE — shipped 0.7.0; credential URL opened locally, never returned to the agent |
+| 2b | `pal_preview` → screenshot TO the agent (headless browser) | L | NEXT — Playwright drives the same token URL + console-login chain (proven in the probe) and returns a PNG so the agent sees its own render |
+| 3 | `pal_validate` (local lint: workflow-JS subset + c: attribute whitelists) | M | Instant, offline, pre-push; complements server truth |
 | 4 | `pal_sync_datasets` (+ lift the datasets-are-GUI-only rule, recreate never) | M | Real data modeling from the agent; reference-implementation-proven |
 | 5 | 3-way merge | M | Completes sync; builds on 0.6.0 baselines |
-| 6 | `seo-core` + `pal_seo_audit` | M | Rides on the preview fetch plumbing |
+| 6 | `seo-core` + `pal_seo_audit` | M | Rides on the preview plumbing |
 | 7 | Deployment tooling (`pal_deploy`) | M | Confirmed API; turns palsync into the full lifecycle bridge |
 | later | Starters/templates, non-technical surfaces | S–L | Team has logins + terminals today |
+
+**Probe outcome (what `pal_test` is built on):** `TestConsole.do` on ISR returned
+`validated:true` with 0 notes and a `token` URL. Following that URL with a cookie jar +
+programmatic console login lands on the platform console host (`cp-root`, `cp-lib`,
+`desktop.css`); the pal's own page then loads *inside* it via server-encrypted
+`ContractPal.handleAction` calls a plain fetch can't replay. So: **validation is fetch-cheap
+and exact** (the basis of `pal_test`), but **seeing a *console* pal render needs a real
+browser** (step 2b). Web pals should screenshot directly from the token URL — untested (ISR is
+console-only); a web test pal would confirm it.
 
 A **designated throwaway test pal** unblocks live verification for all of it (standalone
 push smoke, the Test probe, dataset sync, deployment) without ever touching a client pal.

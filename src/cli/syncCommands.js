@@ -18,21 +18,28 @@ const USAGE = [
     "  palsync push   [--force] [--keep-lock] [--dir <workspace>]   Push local changes (no MCP server needed)",
     "  palsync pull   [--force] [--dir <workspace>]                 Pull/sync from the server",
     "  palsync status [--dir <workspace>]                           Server drift, local changes, lock holder",
+    "  palsync test   [--workflow console|web|transaction] [--no-preview] [--keep-lock] [--dir <ws>]",
+    "                                                               Server-validate a workflow + open a live preview",
     "",
-    "  --force      push: override the server-drift refusal · pull: overwrite locally-modified files",
-    "  --keep-lock  push: keep holding the pal lock after the push (default releases it)",
-    "  --dir <ws>   workspace directory (default: current directory)",
+    "  --force        push: override the server-drift refusal · pull: overwrite locally-modified files",
+    "  --keep-lock    push/test: keep holding the pal lock afterwards (default releases it)",
+    "  --workflow     test: which engine to test (default: auto-detected from the pal)",
+    "  --no-preview   test: validate only, don't open the browser preview",
+    "  --dir <ws>     workspace directory (default: current directory)",
     "",
     "The workspace must have been set up once by `palsync` (it needs .palsync.json + keychain login)."
 ].join("\n");
 
 function parseFlags(argv) {
-    const flags = { force: false, keepLock: false, dir: undefined, help: false };
+    const flags = { force: false, keepLock: false, dir: undefined, help: false, workflow: undefined, preview: true };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === "--force" || a === "-f") flags.force = true;
         else if (a === "--keep-lock") flags.keepLock = true;
+        else if (a === "--no-preview") flags.preview = false;
         else if (a === "--help" || a === "-h") flags.help = true;
+        else if (a === "--workflow") { flags.workflow = argv[++i]; if (!flags.workflow) throw new Error("--workflow requires a value"); }
+        else if (a.startsWith("--workflow=")) flags.workflow = a.slice("--workflow=".length);
         else if (a === "--dir") { flags.dir = argv[++i]; if (!flags.dir) throw new Error("--dir requires a value"); }
         else if (a.startsWith("--dir=")) flags.dir = a.slice("--dir=".length);
         else throw new Error("Unknown flag for this subcommand: " + a + "\n\n" + USAGE);
@@ -76,6 +83,16 @@ async function run(cmd, argv) {
         const res = await toolByName("pal_pull").run(ctx, { force: flags.force });
         console.log(res.message);
         return res.pulled ? 0 : 1;
+    }
+
+    if (cmd === "test") {
+        const res = await toolByName("pal_test").run(ctx, { workflow: flags.workflow, preview: flags.preview });
+        console.log(res.message);
+        // pal_test acquires the lock; release it unless asked to hold (no live session here).
+        if (!flags.keepLock && ctx.session.lockInfo) {
+            try { await lock.releaseByGuid(ctx.session, ctx.record.palGuid); } catch (e) { /* own next session reclaims */ }
+        }
+        return res.ran && res.validated ? 0 : 1;
     }
 
     if (cmd === "push") {

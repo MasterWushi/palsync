@@ -1,10 +1,12 @@
 "use strict";
-// The five palsync MCP tools. Each `run(ctx, args)` is a plain async function (so it's directly
+// The palsync MCP tools. Each `run(ctx, args)` is a plain async function (so it's directly
 // testable); server.js wraps them for the MCP SDK. ctx = { session, record, workspaceDir,
 // lifecycle, persist() }. Datasets/dataviews are never created or destroyed by any tool.
 const { z } = require("zod");
 const { pull } = require("../core/pull");
 const { push } = require("../core/push");
+const { runTest } = require("../core/test");
+const { openUrl } = require("../platform/openUrl");
 const lock = require("../core/lock");
 const drift = require("../core/drift");
 const { resolveServerPalByGuid } = require("../core/resolve");
@@ -88,6 +90,50 @@ const TOOLS = [
                 "Lock: " + lockMsg;
             return { message, serverNewer, storedMarker: ctx.record.lastModifiedDate, liveMarker: live && live.lastModifiedDate,
                      localChanges: { dirty: d.dirty, changed: d.changed, added: d.added, deleted: d.deleted }, lock: st };
+        }
+    },
+    {
+        name: "pal_test",
+        description: "Validate a workflow on the server (fresh compile check the push/save API doesn't give) and open a live preview in your browser. Returns validation notes; the credential-bearing preview URL is opened locally, never returned. Use after a push to confirm the pal compiles and to see it render.",
+        inputShape: {
+            workflow: z.enum(["console", "web", "transaction"]).optional(),
+            workflowName: z.string().optional(),
+            preview: z.boolean().optional()
+        },
+        async run(ctx, { workflow, workflowName, preview = true } = {}) {
+            const res = await runTest(ctx.session, ctx.record.palGuid, { kind: workflow, workflowName });
+            if (ctx.lifecycle) ctx.lifecycle.onActivity(); // pal_test takes the lock — re-arm idle
+            if (!res.ran) {
+                if (res.blocked === "no-testable-workflow") {
+                    return { ran: false, message: "No runnable workflow to test on this pal (need a console/web/transaction workflow)." };
+                }
+                if (res.blocked === "no-lock" || /lock/.test(res.blocked || "")) {
+                    return { ran: false, message: "Couldn't acquire the lock to test (" + res.blocked + (res.holder ? ", held by " + res.holder : "") + ")." };
+                }
+                return { ran: false, message: "Test could not run (" + (res.blocked || "unknown") + ")." };
+            }
+            // Open the live preview locally if it validated — the URL carries the credential, so
+            // it is NEVER put in the tool result. The agent only learns that it opened.
+            let previewMsg;
+            if (res._previewUrl && preview) {
+                const opened = await openUrl(res._previewUrl);
+                previewMsg = opened.opened
+                    ? "Live preview opened in your browser" + (res.kind === "console" ? " (the console pal renders inside the CloudPiston console shell)." : ".")
+                    : "Live preview URL is ready but the browser couldn't be opened automatically (" + opened.reason + ") — it carries your credentials, so it isn't shown here; re-run on a desktop session.";
+            } else if (res._previewUrl) {
+                previewMsg = "Live preview available (preview:false set — not opened).";
+            } else {
+                previewMsg = "No live preview — the workflow did not validate (fix the notes above, push, and test again).";
+            }
+            const verdict = res.validated
+                ? "✅ " + res.kind + " workflow VALIDATED on the server."
+                : "❌ " + res.kind + " workflow did NOT validate.";
+            const message = "Tested " + ctx.record.palName + " (" + res.kind + ").\n" +
+                verdict + "\n" + formatValidation(res.validation) + "\n" + previewMsg +
+                (res.availableKinds.length > 1 ? "\n(testable engines on this pal: " + res.availableKinds.join(", ") + ")" : "");
+            // Strip the credential URL before returning — defense in depth.
+            const safe = Object.assign({}, res); delete safe._previewUrl;
+            return Object.assign(safe, { message });
         }
     },
     {
