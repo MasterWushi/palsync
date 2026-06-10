@@ -104,33 +104,56 @@ realistic next step is removing blank-page setup cost for *semi*-technical users
   surface without palsync building any UI. Worth a research spike on remote MCP transport —
   the codebase is already transport-agnostic at the tool layer.
 
-## 6. Research spikes (platform questions, mostly for the CloudPiston devs)
+## 6. Research findings (June 2026 — mined from the reference extension source)
 
-- **Dataset operations**: `apiManager` already special-cases a `SyncDataSet.do` endpoint —
-  if it permits headless reads/writes, a `pal_data` tool could seed test data and run smoke
-  checks (the missing piece of "agentic beyond code"). Today the agent can read schema from
-  the pulled `datasets/*.json` but can't touch data.
-- **Debugger output**: `c:debug` / `c.debug()` render to the builder's panel. If that output
-  is fetchable over HTTP, the agent could actually *test* server-side behavior — the backend
-  equivalent of `pal_preview`.
-- **Pal creation via API**: `ProcessPalBuilder` supports `UPDATE`; if `CREATE` works (the
-  extension never used it), `palsync new` becomes possible and the "create it in PalBuilder
-  first" caveats shrink.
-- **Workflow compile via API**: any endpoint that returns a *fresh* workflow compile would
-  upgrade priority 2 from lint-approximation to ground truth.
+The builder protocol is not in the public docs; the VS Code extension
+(`~/.vscode/extensions/undefined_publisher.pal-builder-0.0.1/out/`) is the ground truth, and
+it contains several endpoints **never ported into palsync**:
+
+- **CONFIRMED — dataset provisioning via API.** The extension's dataset editor writes the
+  `Dataset` definition (fields/indexes) into `pal.json`, saves, then calls
+  `SyncDataSet.do` with the dataset names (`Recreate-Dataset: true` header optional — drops
+  data, so palsync should never send it). This is what the GUI's "sync dataset" does. So
+  "datasets are PalBuilder-only" is a palsync porting gap, not a platform limit: a
+  `pal_sync_datasets` tool would let the agent do real data modeling (define → push → sync).
+- **CONFIRMED — `Test<Console|Web|Pal>.do` is the preview/validation primitive.** It returns
+  *fresh* `validationResults` (the workflow feedback the save API never gives) **plus a
+  runnable token URL**; for console/transaction the extension appends
+  `&cp-auth=<base64 user:pass>&nxProfileId=<id>&cp-workflow=<name>` and opens it in a
+  browser. That URL is plain-fetchable — `pal_preview` may need no headless-browser login at
+  all, and `pal_validate` gets ground truth instead of lint approximation. Requires holding
+  the pal lock (which an MCP session already does). **Live probe written and ready:**
+  `node scripts/test-workflow-probe.js` (needs an explicit go-ahead to run against ISR, or a
+  designated test pal — it locks, tests, fetches the token URL, unlocks; no save).
+- **CONFIRMED — deployment via API.** `RequestPalDeployment.do` + `ProcessPalDeployment.do`
+  with `DeploymentParameters` (activationKey, upgradeReason "Initial Commit" | upgrade
+  packet flags). The full edit → push → test → deploy lifecycle is automatable.
+- **OPEN — pal creation.** Nothing in the extension creates a pal (`uploadPal` is local-file
+  import). One for the platform team: does `ProcessPalBuilder` accept a CREATE operation?
+- **OPEN — debugger output.** No fetchable debug endpoint found in the extension or docs.
+  The Test token URL may render the `c:debug` panel inline in test mode, which would
+  partially cover it — the probe will tell.
 
 ---
 
-## Sequencing
+## Sequencing (revised after the research findings + "team tool" audience answer)
+
+palsync is a tool for the existing team (everyone has a login), so the accessibility track
+(starters, chat-only surfaces) drops to "later" and the close-the-loop track is everything:
 
 | Order | Item | Size | Why this order |
 |---|---|---|---|
-| 1 | `pal_validate` (lint) | M | Highest certainty, no platform unknowns, immediate quality floor |
-| 2 | `pal_preview` (web pals first) | M–L | Transforms design output; web-pal half has zero auth risk |
-| 3 | `seo-core` + `pal_seo_audit` | M | Rides on preview's fetch plumbing |
-| 4 | 3-way merge | M | Completes sync; builds on 0.6.0 baselines |
-| 5 | Starters/templates | S | Cheap, immediately useful for onboarding |
-| 6 | Research spikes | ? | Unblock data tools, debugger loop, `palsync new` |
+| 1 | Run the `Test<Type>.do` probe | XS | One command, unlocks the design of 2–4; needs a go-ahead or a test pal |
+| 2 | `pal_test` / `pal_preview` (token URL + fresh validation) | M | The probe's endpoint gives BOTH the render loop and workflow-compile truth |
+| 3 | `pal_validate` (local lint: workflow-JS subset + c: attribute whitelists) | M | Still worth it — instant, offline, pre-push; complements server truth |
+| 4 | `pal_sync_datasets` (+ lift the datasets-are-GUI-only rule, recreate never) | M | Real data modeling from the agent; reference-implementation-proven |
+| 5 | 3-way merge | M | Completes sync; builds on 0.6.0 baselines |
+| 6 | `seo-core` + `pal_seo_audit` | M | Rides on the preview fetch plumbing |
+| 7 | Deployment tooling (`pal_deploy`) | M | Confirmed API; turns palsync into the full lifecycle bridge |
+| later | Starters/templates, non-technical surfaces | S–L | Team has logins + terminals today |
+
+A **designated throwaway test pal** unblocks live verification for all of it (standalone
+push smoke, the Test probe, dataset sync, deployment) without ever touching a client pal.
 
 The thread through all of it: **close the loop**. An agent that can see the render, the
 compile errors, the audit results, and the data is an agent that can iterate to excellent —
