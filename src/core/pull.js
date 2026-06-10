@@ -46,6 +46,12 @@ const BASE64_TYPES = [
     ["allWorkflows", "Workflow", "workflows"]
 ];
 
+// Folders whose NEW local files palsync can legitimately push (and so whose pal.json entries
+// are worth carrying forward through a pull). Workflows/documents are server-rejected on
+// create; datasets/dataviews/data/datalists are PalBuilder-provisioned. Files of those types
+// are still PRESERVED on disk (never destroy local work) — they just can't ride a push.
+const CREATABLE_FOLDERS = new Set(["pages", "fragments", "scripts", "styles", "images", "emails", "attachments"]);
+
 // Compute the set of POSIX-style relative paths the current server manifest will write into
 // the workspace (everything inside the 13 manifest folders). Exposed for tests/diagnostics.
 function manifestPaths(pal) {
@@ -57,6 +63,57 @@ function manifestPaths(pal) {
         for (const entry of pal[getter]) out.add(folder + "/" + entry.string);
     }
     return out;
+}
+
+// THE SYNC DECISION (pure, unit-testable): which local files under the manifest folders are
+// deleted vs preserved, given the current server manifest and the per-file baseline recorded
+// at the last pull/push (record.fileHashes — its KEYS are the files the server tracked then).
+//
+//   in server manifest                         → overwritten by expandPalFiles (not listed here)
+//   not on server, IN baseline                 → the server deleted it → delete locally
+//   not on server, NOT in baseline             → new un-pushed local work → PRESERVE
+//   not on server, no baseline available       → legacy behavior: delete (pre-baseline records
+//                                                 can't tell the two cases apart; the launcher/
+//                                                 pal_pull drift guard fires before this anyway)
+function planSync(localTracked, serverSet, baseline) {
+    const toDelete = [], toPreserve = [];
+    for (const rel of localTracked) {
+        if (serverSet.has(rel)) continue;
+        if (!baseline || rel in baseline) toDelete.push(rel);
+        else toPreserve.push(rel);
+    }
+    return { toDelete, toPreserve };
+}
+
+// Carry the pal.json entries of preserved NEW files forward into the fresh (server) manifest,
+// so the next push still ships them. Only creatable types merge; preserved files of other
+// types keep their bytes on disk but are reported as needing PalBuilder creation. Mutates pal.
+// Returns [{ rel, merged, note }].
+function mergePreservedEntries(pal, oldPalJson, toPreserve) {
+    const report = [];
+    for (const rel of toPreserve) {
+        const slash = rel.indexOf("/");
+        const folder = rel.slice(0, slash);
+        const entryString = rel.slice(slash + 1); // fragments keep subpaths, e.g. contacts/list.html
+        if (!CREATABLE_FOLDERS.has(folder)) {
+            report.push({ rel, merged: false, note: "preserved on disk; this type can't be created via push — create it in PalBuilder first" });
+            continue;
+        }
+        const node = oldPalJson && oldPalJson[folder] && Array.isArray(oldPalJson[folder].entry)
+            ? oldPalJson[folder].entry : [];
+        const oldEntry = node.find(e => e && e.string === entryString);
+        if (!oldEntry) {
+            report.push({ rel, merged: false, note: "preserved on disk; no pal.json entry found — add one so push can ship it" });
+            continue;
+        }
+        if (!pal[folder] || pal[folder] === "") pal[folder] = { entry: [] };
+        if (!Array.isArray(pal[folder].entry)) pal[folder].entry = [];
+        if (!pal[folder].entry.some(e => e && e.string === entryString)) {
+            pal[folder].entry.push(oldEntry);
+        }
+        report.push({ rel, merged: true, note: "new local file — preserved and kept in pal.json for the next push" });
+    }
+    return report;
 }
 
 // List every file currently under the 13 manifest folders (recursive, files only). Returns
@@ -145,14 +202,18 @@ async function saveLocal(pal) {
     await fs.writeFile(path.join(pal.path, "pal.json"), JSON.stringify(pal, null, 2), "utf8");
 }
 
-// Full pull (SYNC). Returns { resolved, serverPal, pal, written, removed }.
+// Full pull (SYNC). Returns { resolved, serverPal, pal, written, removed, preserved, serverPaths }.
 //   - Pull-managed = the 13 manifest folders + pal.json. Files there are overwritten with the
-//     server state; files no longer in the server manifest are removed (server-side deletes).
+//     server state; files the server no longer tracks are removed ONLY when the baseline
+//     proves the server tracked them before (a real server-side delete). New un-pushed local
+//     files are PRESERVED and their pal.json entries carried forward (see planSync /
+//     mergePreservedEntries). Without a baseline (legacy records), behavior is unchanged.
 //   - Everything else in targetDir is untouched (root-level user files like spec.md, user-
 //     created subdirs like references/, and palsync-managed files .palsync.json / CLAUDE.md /
 //     .claude/ / .mcp.json all survive a pull cleanly).
 // environment carries only the url — never credentials, so nothing secret reaches pal.json.
-async function pull(session, guid, targetDir) {
+//   baseline = the record.fileHashes map from the last pull/push (or null).
+async function pull(session, guid, targetDir, { baseline = null } = {}) {
     const resolved = await resolveServerPalByGuid(session, guid);
     if (!resolved) {
         throw new Error("GUID " + guid + " not found on " + session.environment.url);
@@ -163,8 +224,12 @@ async function pull(session, guid, targetDir) {
     }
     const serverPal = palResp.pal;
 
-    // 1) Ensure the workspace dir exists (no-op if already there — DO NOT wipe).
+    // 1) Ensure the workspace dir exists (no-op if already there — DO NOT wipe). Read the old
+    //    local pal.json BEFORE anything overwrites it — preserved new files need their entries.
     await fs.mkdir(targetDir, { recursive: true });
+    let oldPalJson = null;
+    try { oldPalJson = JSON.parse(await fs.readFile(path.join(targetDir, "pal.json"), "utf8")); }
+    catch (e) { /* fresh workspace or unreadable manifest — nothing to merge */ }
 
     // Deep-clone for the Pal instance: expandPalFiles writes from it and clearContent blanks
     // its base64 content in place. Cloning keeps the returned serverPal pristine (full content)
@@ -176,16 +241,14 @@ async function pull(session, guid, targetDir) {
         environment: { url: session.environment.url, name: session.environment.name, platformVersion: session.environment.platformVersion || "" }
     }));
 
-    // 2) STALE-DELETE: anything currently under the 13 manifest folders that is NOT in the
-    //    server's current manifest is removed (the server-side-delete case).
+    // 2) STALE-DELETE vs PRESERVE: decide per local file via the baseline (see planSync).
     const serverSet = manifestPaths(pal);
     const localTracked = await listTrackedFiles(targetDir);
+    const { toDelete, toPreserve } = planSync(localTracked, serverSet, baseline);
     const removed = [];
-    for (const rel of localTracked) {
-        if (!serverSet.has(rel)) {
-            await fs.unlink(path.join(targetDir, ...rel.split("/")));
-            removed.push(rel);
-        }
+    for (const rel of toDelete) {
+        await fs.unlink(path.join(targetDir, ...rel.split("/")));
+        removed.push(rel);
     }
 
     // 3) Write the server state. expandPalFiles mkdir's each folder + sub-path, then writes
@@ -196,12 +259,17 @@ async function pull(session, guid, targetDir) {
     //    The 13 top-level folders themselves stay (kept for stable workspace shape).
     await pruneEmptySubdirs(targetDir);
 
-    // 5) pal.json — clear base64 content fields, then write the manifest. This is also
-    //    pull-managed and gets overwritten on every pull.
+    // 5) Carry preserved new files' manifest entries forward, then write pal.json (base64
+    //    content blanked). pal.json = server manifest + the preserved local-only entries, so
+    //    the next push still ships the user's new files.
+    const preserved = mergePreservedEntries(pal, oldPalJson, toPreserve);
     clearContent(pal);
     await saveLocal(pal);
 
-    return { resolved, serverPal, pal, written, removed };
+    // serverPaths = exactly the files the SERVER tracks right now (what expandPalFiles wrote).
+    // Callers build the next fileHashes baseline from this — preserved local files must NOT
+    // enter the baseline, or the next pull would mistake them for server-side deletes.
+    return { resolved, serverPal, pal, written, removed, preserved, serverPaths: [...serverSet] };
 }
 
-module.exports = { pull, expandPalFiles, clearContent, saveLocal, manifestPaths, listTrackedFiles, pruneEmptySubdirs, ALL_FOLDERS };
+module.exports = { pull, expandPalFiles, clearContent, saveLocal, manifestPaths, listTrackedFiles, pruneEmptySubdirs, planSync, mergePreservedEntries, ALL_FOLDERS, CREATABLE_FOLDERS };

@@ -36,9 +36,15 @@ a warning.
 - **Pull-managed (server-tracked)** — `pal.json` + everything inside the **13 manifest folders**
   above (`pages/`, `fragments/`, `scripts/`, `styles/`, `images/`, `emails/`, `attachments/`,
   `documents/`, `workflows/`, `datasets/`, `dataviews/`, `data/`, `datalists/`). Pull overwrites
-  these from the server and **removes** local files that no longer exist in the server manifest.
-  Do NOT put your own notes, scratch files, or non-pal assets inside these folders — they will
-  be deleted as stale on the next pull.
+  these from the server, and removes a local file only when the **server deleted it** (it was
+  server-tracked at your last pull and is gone now).
+- **NEW un-pushed files inside the manifest folders are PRESERVED.** A file you created (plus
+  its `pal.json` entry) that hasn't been pushed yet survives a pull — the entry is carried
+  forward into the refreshed `pal.json` so the next push still ships it. Still, don't park
+  notes or scratch files in these folders; they belong at the workspace root.
+- **Pull refuses rather than overwrites.** If server-tracked files have un-pushed local edits,
+  `pal_pull` refuses and names the files (push first, or `force:true` to discard the edits —
+  new local files are preserved even under force).
 - **Untouched by pull** — anything at the workspace root that isn't `pal.json`, and any
   user-created subdir that isn't one of the 13 above. Project notes, specs, reference images,
   design assets, etc. go HERE:

@@ -3,15 +3,24 @@
 // user CLAUDE.md across the pull), write .palsync.json, and register the MCP server. After this
 // the directory is a ready Claude Code workspace. The lock is left HELD — the MCP server (booted
 // by Claude Code) owns its lifecycle/release; the launcher does not release on exit.
+//
+// DATA-LOSS GUARD (the launcher-side reverse drift guard): if the workspace holds un-pushed
+// local edits to server-tracked files (e.g. the MCP server died before a push), the setup pull
+// must NOT silently overwrite them. Before pulling we diff the workspace against the baseline
+// recorded at the last pull/push (.palsync.json fileHashes / localHash) and, on drift, route
+// the decision through the injectable onDrift prompt: push first / overwrite / skip / abort.
+// NEW local files never trigger the guard — pull-as-sync preserves them (see core/pull).
 const path = require("path");
 const os = require("os");
 const { pull } = require("../core/pull");
+const { push } = require("../core/push");
 const lock = require("../core/lock");
 const contextInject = require("./contextInject");
 const palsyncfile = require("../core/palsyncfile");
 const { register } = require("../mcp/register");
 const { registerCodex } = require("../mcp/registerCodex");
-const { hashWorkspace } = require("../core/workspaceHash");
+const { hashWorkspace, hashPaths } = require("../core/workspaceHash");
+const { diffWorkspace, describeDiff } = require("../core/localDrift");
 
 function slug(name) {
     return String(name).trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "pal";
@@ -21,16 +30,57 @@ function defaultWorkspaceDir(palName) {
     return path.join(os.homedir(), "PalBuilder", slug(palName));
 }
 
+// Resolve un-pushed local changes before the setup pull. Loops the injectable onDrift prompt
+// until an action lands. Returns "pull" (proceed) or "skip" (keep local state, no pull).
+// Throws on abort or when no prompt is available (headless safety: never silently overwrite).
+async function resolveLocalDrift({ session, existing, workspaceDir, palName, diff, onDrift, log }) {
+    if (!onDrift) {
+        throw new Error(
+            "Workspace " + workspaceDir + " has un-pushed local changes:\n" + describeDiff(diff) +
+            "\nRefusing to overwrite them in a non-interactive setup. Push or discard the changes, then re-run."
+        );
+    }
+    let info = { phase: "initial", diff, palName, workspaceDir };
+    while (true) {
+        const action = await onDrift(info);
+        if (!action || action === "abort") {
+            throw new Error("Cancelled — un-pushed local changes left untouched in " + workspaceDir + ".");
+        }
+        if (action === "skip") return "skip";
+        if (action === "overwrite") return "pull";
+        if (action === "push" || action === "force-push") {
+            log(action === "force-push" ? "force-pushing local changes (past server drift)…" : "pushing local changes first…");
+            const pr = await push(session, existing, workspaceDir, { force: action === "force-push" });
+            if (pr.pushed) {
+                // Server now matches disk — refresh the baseline so the pull that follows sees a
+                // clean workspace (and preserves any remaining new-but-uncreatable local files).
+                existing.localHash = hashWorkspace(workspaceDir);
+                if (pr.serverPaths) existing.fileHashes = hashPaths(workspaceDir, pr.serverPaths);
+                await palsyncfile.write(workspaceDir, existing);
+                log("local changes pushed (" + pr.filesPushed + " files) — safe to pull");
+                return "pull";
+            }
+            // Push refused (server drifted too, or a lock) — surface it and re-prompt.
+            info = { phase: "push-refused", refusal: pr, diff, palName, workspaceDir };
+            continue;
+        }
+        throw new Error("Unknown drift action: " + action);
+    }
+}
+
 // Run the full setup. Returns a summary. Throws if the pal is locked by another user.
 //   withDesign (default false) opts the workspace into the design skills; see contextInject.
 //   agent ("claude" default | "codex") picks the injection destinations and MCP registration path.
-async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false, agent = "claude", log = () => {} }) {
+//   onDrift (injectable; launcher/index.js provides the interactive UI) decides what to do with
+//   un-pushed local changes. Headless callers that omit it get a refusal throw, never a wipe.
+async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false, agent = "claude", onDrift, log = () => {} }) {
 
     // Collision guard. The default workspace path is ~/PalBuilder/<slug(palName)>/ — stable per
     // pal name. If a different pal already lives in this dir (.palsync.json present with a
     // different palGuid), refuse rather than mix two pals' state into one workspace.
+    let existing = null;
     try {
-        const existing = await palsyncfile.read(workspaceDir);
+        existing = await palsyncfile.read(workspaceDir);
         if (existing && existing.palGuid && existing.palGuid !== sel.pal.guid) {
             throw new Error(
                 "Workspace " + workspaceDir + " already belongs to a different pal: \"" +
@@ -40,9 +90,39 @@ async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false,
         }
     } catch (e) { if (e.code !== "ENOENT") throw e; /* no .palsync.json = fresh workspace, fine */ }
 
-    log("pulling " + sel.pal.name + " → " + workspaceDir);
-    const { resolved, written, removed } = await pull(session, sel.pal.guid, workspaceDir);
-    if (removed && removed.length) log("  sync removed " + removed.length + " file(s) deleted on server");
+    // Reverse drift guard BEFORE the pull (same pal only — `existing` is this pal's record).
+    let mode = "pull";
+    if (existing) {
+        const diff = diffWorkspace(existing, workspaceDir);
+        if (diff.dirty) {
+            log("un-pushed local changes detected in " + workspaceDir);
+            mode = await resolveLocalDrift({ session, existing, workspaceDir, palName: sel.pal.name, diff, onDrift, log });
+        }
+    }
+
+    let record, written = { base64: [], json: [] }, removed = [], preserved = [];
+    if (mode === "pull") {
+        log("pulling " + sel.pal.name + " → " + workspaceDir);
+        const res = await pull(session, sel.pal.guid, workspaceDir, { baseline: (existing && existing.fileHashes) || null });
+        written = res.written; removed = res.removed; preserved = res.preserved;
+        if (removed.length) log("  sync removed " + removed.length + " file(s) deleted on server");
+        for (const p of preserved) log("  preserved local work: " + p.rel + (p.merged ? "" : " — " + p.note));
+
+        // .palsync.json (drift marker = pulled lastModifiedDate; localHash + per-file baseline)
+        record = palsyncfile.buildRecord({
+            cloudUrl, userId: session.userId, username: session.username,
+            pal: { guid: sel.pal.guid, name: sel.pal.name, lastModifiedDate: res.resolved.lastModifiedDate },
+            workspaceDir
+        });
+        record.localHash = hashWorkspace(workspaceDir);
+        record.fileHashes = hashPaths(workspaceDir, res.serverPaths);
+        record.pulledAt = new Date().toISOString();
+    } else {
+        // skip: the user chose to keep local state. Keep the existing record untouched (its
+        // marker still guards the next push; its baseline still names the local changes).
+        log("skipping pull — keeping local workspace state as-is");
+        record = existing;
+    }
 
     // auto-lock (own Webstart-lock reclaim is automatic; setup never force-overrides a PalBuilder lock)
     log("locking pal");
@@ -57,21 +137,13 @@ async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false,
         throw new Error("Could not lock \"" + sel.pal.name + "\" (" + (lk.blocked || "unknown") + "). Unlock and close it in PalBuilder, then re-run palsync.");
     }
 
-    // CLAUDE.md is no longer wiped by pull (sync only touches files inside the 13 manifest
-    // folders + pal.json), so the prior save/restore hack is unnecessary — inject() reads the
-    // user's existing CLAUDE.md directly and merges its managed block in place.
+    // CLAUDE.md is not wiped by pull (sync only touches files inside the 13 manifest folders
+    // + pal.json) — inject() reads the user's existing CLAUDE.md and merges its managed block
+    // in place.
     log("injecting CLAUDE.md + skills" + (withDesign ? " (with design system)" : "") +
         (agent === "codex" ? " + AGENTS.md/.agents (Codex)" : ""));
     const injected = await contextInject.inject(workspaceDir, { palName: sel.pal.name, withDesign, agent });
 
-    // .palsync.json (drift marker = pulled lastModifiedDate; localHash baseline)
-    const record = palsyncfile.buildRecord({
-        cloudUrl, userId: session.userId, username: session.username,
-        pal: { guid: sel.pal.guid, name: sel.pal.name, lastModifiedDate: resolved.lastModifiedDate },
-        workspaceDir
-    });
-    record.localHash = hashWorkspace(workspaceDir);
-    record.pulledAt = new Date().toISOString();
     await palsyncfile.write(workspaceDir, record);
 
     // register the MCP server for the chosen agent.
@@ -96,8 +168,11 @@ async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false,
 
     return {
         workspaceDir,
+        pulled: mode === "pull",
         pulledFiles: written.base64.length,
         dataFiles: written.json.length,
+        removed,
+        preserved,
         locked: lk.acquired,
         lockHolder: lk.holder,
         injected,
@@ -108,4 +183,4 @@ async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false,
     };
 }
 
-module.exports = { setup, defaultWorkspaceDir, slug };
+module.exports = { setup, defaultWorkspaceDir, slug, resolveLocalDrift };

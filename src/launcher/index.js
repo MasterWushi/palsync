@@ -5,7 +5,7 @@
 const { loadClack } = require("../platform/uiPrompts");
 const { login } = require("../auth/credentials");
 const { runSelection } = require("./selection");
-const { selectionPrompts } = require("./prompts");
+const { selectionPrompts, driftPrompt } = require("./prompts");
 const agents = require("./agents");
 const workspace = require("./workspace");
 
@@ -22,6 +22,7 @@ async function run({
     selectionPrompts: selPrompts = selectionPrompts,
     pickAgent,
     chooseWorkspaceDir = defaultChooseDir,
+    onDrift = driftPrompt,
     autoLaunch = true,
     withDesign = false,
     agent: agentKey,
@@ -51,7 +52,7 @@ async function run({
     // 5. workspace dir + setup (pull + lock + inject + .palsync.json + register MCP)
     const dir = await chooseWorkspaceDir(workspace.defaultWorkspaceDir(sel.pal.name), sel.pal);
     if (!dir) { log("cancelled at workspace dir"); return null; }
-    const setupResult = await workspace.setup({ session, cloudUrl, sel, workspaceDir: dir, withDesign, agent: agent.key, log });
+    const setupResult = await workspace.setup({ session, cloudUrl, sel, workspaceDir: dir, withDesign, agent: agent.key, onDrift, log });
 
     // 6. open the agent in the workspace (handoff). Lock stays held; MCP server owns release.
     let child = null;

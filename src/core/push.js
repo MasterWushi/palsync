@@ -9,6 +9,7 @@ const path = require("path");
 const { Pal } = require("../../lib/pal");
 const { CloudPistonAPIManager } = require("../../lib/apiManager");
 const { resolveServerPalByGuid } = require("./resolve");
+const { manifestPaths } = require("./pull");
 const lock = require("./lock");
 const drift = require("./drift");
 
@@ -124,7 +125,10 @@ async function push(session, record, workspaceDir, { force = false, overrideLock
         record.lastModifiedDate = after ? after.lastModifiedDate : liveMarker;
     }
 
-    return { pushed: success, forced: !!force, filesPushed: injected.length, validation, newMarker: record.lastModifiedDate, skipped };
+    // serverPaths: what the server tracks after this save = the pushed manifest (uncreatable
+    // strays already stripped by the guard above). Callers rebuild fileHashes from this.
+    return { pushed: success, forced: !!force, filesPushed: injected.length, validation,
+             newMarker: record.lastModifiedDate, skipped, serverPaths: success ? [...manifestPaths(pal)] : null };
 }
 
 module.exports = { push, buildSaveTask, normalizeValidation };

@@ -8,7 +8,16 @@ const { push } = require("../core/push");
 const lock = require("../core/lock");
 const drift = require("../core/drift");
 const { resolveServerPalByGuid } = require("../core/resolve");
-const { hashWorkspace } = require("../core/workspaceHash");
+const { hashWorkspace, hashPaths } = require("../core/workspaceHash");
+const { diffWorkspace, describeDiff } = require("../core/localDrift");
+
+// Refresh the record's local baseline after a pull/push: localHash (legacy combined hash) +
+// fileHashes (per-file map over exactly the server-tracked paths — preserved local-only files
+// must NOT enter it, or the next pull would mistake them for server-side deletes).
+function refreshBaseline(record, workspaceDir, serverPaths) {
+    record.localHash = hashWorkspace(workspaceDir);
+    if (serverPaths) record.fileHashes = hashPaths(workspaceDir, serverPaths);
+}
 
 function nowIso() { return new Date().toISOString(); }
 
@@ -76,21 +85,27 @@ const TOOLS = [
     },
     {
         name: "pal_pull",
-        description: "Pull the pal from the server to disk. Refuses if it would overwrite un-pushed local changes (use force to override).",
+        description: "Pull (sync) the pal from the server. New un-pushed local files are preserved. Refuses if it would overwrite locally-modified server files (use force to override).",
         inputShape: { force: z.boolean().optional() },
         async run(ctx, { force = false } = {}) {
-            const current = hashWorkspace(ctx.workspaceDir);
-            if (ctx.record.localHash && current !== ctx.record.localHash && !force) {
-                return { pulled: false, refused: "local-changes",
-                    message: "REFUSED: the workspace has un-pushed local changes that pull would overwrite. pal_push first, or pal_pull with force:true to discard them." };
+            // Reverse drift guard, per-file: changed/deleted server-tracked files (and pure
+            // pal.json mutations) block the pull; NEW local files don't — sync preserves them.
+            const d = diffWorkspace(ctx.record, ctx.workspaceDir);
+            if (d.dirty && !force) {
+                return { pulled: false, refused: "local-changes", changed: d.changed, deleted: d.deleted, added: d.added,
+                    message: "REFUSED: un-pushed local changes would be lost by this pull.\n" + describeDiff(d) +
+                        "\npal_push first, or pal_pull with force:true to overwrite them." +
+                        (d.legacy ? "" : " (New local files are preserved either way.)") };
             }
-            const { resolved, written } = await pull(ctx.session, ctx.record.palGuid, ctx.workspaceDir);
+            const { resolved, written, removed, preserved, serverPaths } = await pull(ctx.session, ctx.record.palGuid, ctx.workspaceDir, { baseline: ctx.record.fileHashes || null });
             ctx.record.lastModifiedDate = resolved.lastModifiedDate;
-            ctx.record.localHash = hashWorkspace(ctx.workspaceDir);
+            refreshBaseline(ctx.record, ctx.workspaceDir, serverPaths);
             ctx.record.pulledAt = nowIso();
             await ctx.persist();
             return { pulled: true, files: written.base64.length, dataFiles: written.json.length, marker: resolved.lastModifiedDate,
-                message: "Pulled " + ctx.record.palName + ": " + written.base64.length + " code files + " + written.json.length + " data/schema files. marker=" + resolved.lastModifiedDate };
+                message: "Pulled " + ctx.record.palName + ": " + written.base64.length + " code files + " + written.json.length + " data/schema files. marker=" + resolved.lastModifiedDate +
+                    (removed.length ? "\nRemoved (deleted on server): " + removed.join(", ") : "") +
+                    (preserved.length ? "\nPreserved local work:\n" + preserved.map(p => "   - " + p.rel + " — " + p.note).join("\n") : "") };
         }
     },
     {
@@ -102,7 +117,7 @@ const TOOLS = [
             const overrideLock = confirmOverride === overridePhrase(palName);
             const res = await push(ctx.session, ctx.record, ctx.workspaceDir, { force: !!force, overrideLock });
             if (res.pushed) {
-                ctx.record.localHash = hashWorkspace(ctx.workspaceDir);
+                refreshBaseline(ctx.record, ctx.workspaceDir, res.serverPaths);
                 await ctx.persist();
                 return Object.assign(res, {
                     message: "Pushed " + res.filesPushed + " files" + (res.forced ? " (forced past drift)" : "") +
