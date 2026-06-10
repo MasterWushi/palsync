@@ -6,6 +6,7 @@ const { z } = require("zod");
 const { pull } = require("../core/pull");
 const { push } = require("../core/push");
 const { runTest } = require("../core/test");
+const { validateWorkspace, formatValidation: formatLint } = require("../core/validate");
 const { openUrl } = require("../platform/openUrl");
 const lock = require("../core/lock");
 const drift = require("../core/drift");
@@ -93,8 +94,18 @@ const TOOLS = [
         }
     },
     {
+        name: "pal_validate",
+        description: "Check the pal's code OFFLINE (no server, no network) for mistakes that silently break in PalBuilder: invalid workflow JavaScript (object literals, let/const, ES6 the restricted engine rejects) and invalid markup (unclosed void tags, undocumented c: attributes, ARIA on c:field, ${} inside inline <script>, DOMContentLoaded in fragments). Returns a list of findings, each with the file, line, an ERROR or WARNING label, and exactly how to fix it. ERROR = will fail to compile or save in PalBuilder; WARNING = likely unsupported, review it. Run this BEFORE pal_push to catch problems early. pal_push also runs this automatically and refuses if there are errors.",
+        inputShape: {},
+        async run(ctx) {
+            const lint = validateWorkspace(ctx.workspaceDir);
+            if (ctx.lifecycle) ctx.lifecycle.onActivity();
+            return Object.assign({ ran: true }, lint, { message: formatLint(lint, { context: "validate" }) });
+        }
+    },
+    {
         name: "pal_test",
-        description: "Validate a workflow on the server (fresh compile check the push/save API doesn't give) and open a live preview in your browser. Returns validation notes; the credential-bearing preview URL is opened locally, never returned. Use after a push to confirm the pal compiles and to see it render.",
+        description: "Validate a workflow ON THE SERVER and open a live preview in the user's browser. Returns the server's validation notes. IMPORTANT: the preview opens in the USER'S local browser; the preview URL contains the user's credentials and is NEVER returned to you, so YOU CANNOT SEE the rendered page — ask the user what it looks like if you need to know. Use after a push to confirm the workflow runs on the server. (For an OFFLINE code check that needs no push, use pal_validate first.)",
         inputShape: {
             workflow: z.enum(["console", "web", "transaction"]).optional(),
             workflowName: z.string().optional(),
@@ -163,15 +174,31 @@ const TOOLS = [
     },
     {
         name: "pal_push",
-        description: "Push local changes to the server (UPDATE). Refuses on drift (force:true) or if locked by another holder (typed confirmOverride).",
-        inputShape: { force: z.boolean().optional(), confirmOverride: z.string().optional() },
-        async run(ctx, { force = false, confirmOverride } = {}) {
+        description: "Push local changes to the server (UPDATE). FIRST runs an offline code check (pal_validate) and REFUSES if there are errors — fix them, or set skipValidation:true to push anyway (not recommended). Also refuses on drift (set force:true) or if the pal is locked by another person (typed confirmOverride). On success, returns the server's save result plus any code WARNINGS.",
+        inputShape: { force: z.boolean().optional(), confirmOverride: z.string().optional(), skipValidation: z.boolean().optional() },
+        async run(ctx, { force = false, confirmOverride, skipValidation = false } = {}) {
             const palName = ctx.record.palName;
             const overrideLock = confirmOverride === overridePhrase(palName);
-            const res = await push(ctx.session, ctx.record, ctx.workspaceDir, { force: !!force, overrideLock });
+            const res = await push(ctx.session, ctx.record, ctx.workspaceDir, { force: !!force, overrideLock, skipValidation: !!skipValidation });
+            // Pre-push lint refusal: errors found, push not attempted.
+            if (res.refused === "validation") {
+                return Object.assign(res, {
+                    message: "REFUSED: the offline code check found errors that would break in PalBuilder, so nothing was pushed.\n\n" +
+                        formatLint(res.lint, { context: "pre-push" }) +
+                        "\n\nFix the ERROR items above and push again. To push anyway without fixing them, call pal_push with skipValidation:true (not recommended)."
+                });
+            }
             if (res.pushed) {
                 refreshBaseline(ctx.record, ctx.workspaceDir, res.serverPaths);
                 await ctx.persist();
+                // Surface any pre-push WARNINGS even on success (errors can't reach here unless
+                // skipValidation forced past them — say so loudly).
+                const warnBlock = res.lint && res.lint.warnings > 0
+                    ? "\n\n⚠ Code warnings (did not block the push — review them):\n" + formatLint(res.lint, { context: "validate" })
+                    : "";
+                const skippedBlock = res.skippedValidation
+                    ? "\n\n⚠ You pushed past " + res.lint.errors + " validation ERROR(s) with skipValidation — the pal may not compile/render in PalBuilder:\n" + formatLint(res.lint, { context: "validate" })
+                    : "";
                 return Object.assign(res, {
                     message: "Pushed " + res.filesPushed + " files" + (res.forced ? " (forced past drift)" : "") +
                         ". save " + (res.pushed ? "OK" : "FAILED") + ". marker=" + res.newMarker + ".\n" +
@@ -179,7 +206,7 @@ const TOOLS = [
                         (res.skipped && res.skipped.length
                             ? "\n⚠ Skipped — these can't be created via palsync; make them in PalBuilder:\n" +
                               res.skipped.map(s => "   - " + s.type + "/" + s.file + " (" + s.reason + ")").join("\n")
-                            : "")
+                            : "") + skippedBlock + warnBlock
                 });
             }
             if (res.refused === "drift") {

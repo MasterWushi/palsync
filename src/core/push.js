@@ -10,6 +10,7 @@ const { Pal } = require("../../lib/pal");
 const { CloudPistonAPIManager } = require("../../lib/apiManager");
 const { resolveServerPalByGuid } = require("./resolve");
 const { manifestPaths } = require("./pull");
+const { validateWorkspace } = require("./validate");
 const lock = require("./lock");
 const drift = require("./drift");
 
@@ -84,7 +85,17 @@ function normalizeValidation(resp) {
 
 // Pushes workspaceDir to the pal identified by record.palGuid. Mutates record.lastModifiedDate
 // on success. Returns a result object (never throws on drift/lock — returns a refusal).
-async function push(session, record, workspaceDir, { force = false, overrideLock = false } = {}) {
+async function push(session, record, workspaceDir, { force = false, overrideLock = false, skipValidation = false } = {}) {
+    // 0) PRE-PUSH LINT (offline): catch the mistakes that silently break in PalBuilder (invalid
+    //    workflow JS, bad markup) BEFORE spending a network round-trip. ERRORS block the push
+    //    (the save would fail or the page/workflow would break) unless skipValidation is set;
+    //    WARNINGS never block — they ride along in the result for the agent to see. This runs
+    //    before lock/drift so a broken local tree fails fast and cheap.
+    const lint = validateWorkspace(workspaceDir);
+    if (lint.errors > 0 && !skipValidation) {
+        return { pushed: false, refused: "validation", lint };
+    }
+
     // 1) ensure the lock is ours. acquireByGuid reads the real holder from teamInfo and reports a
     //    blocked reason (gui-lock-self / gui-lock-other / override-disabled / unknown-holder).
     //    overrideLock only attempts Lock-Force, which is itself gated by OVERRIDE_ENABLED in lock.js.
@@ -127,8 +138,11 @@ async function push(session, record, workspaceDir, { force = false, overrideLock
 
     // serverPaths: what the server tracks after this save = the pushed manifest (uncreatable
     // strays already stripped by the guard above). Callers rebuild fileHashes from this.
+    // lint carries any pre-push WARNINGS (errors would have blocked above) so the agent sees them
+    // even on a clean push; skippedValidation flags an error-bypassing forced push.
     return { pushed: success, forced: !!force, filesPushed: injected.length, validation,
-             newMarker: record.lastModifiedDate, skipped, serverPaths: success ? [...manifestPaths(pal)] : null };
+             newMarker: record.lastModifiedDate, skipped, lint, skippedValidation: skipValidation && lint.errors > 0,
+             serverPaths: success ? [...manifestPaths(pal)] : null };
 }
 
 module.exports = { push, buildSaveTask, normalizeValidation };

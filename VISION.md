@@ -146,7 +146,7 @@ palsync is a tool for the existing team (everyone has a login), so the accessibi
 | 1 | Run the `Test<Type>.do` probe | XS | ✅ DONE — confirmed live on ISR (fresh validation + token URL; console renders inside the platform shell via encrypted AJAX) |
 | 2 | `pal_test` (fresh server validation + browser preview) | M | ✅ DONE — shipped 0.7.0; credential URL opened locally, never returned to the agent |
 | 2b | `pal_preview` → screenshot TO the agent (headless browser) | L | NEXT — Playwright drives the same token URL + console-login chain (proven in the probe) and returns a PNG so the agent sees its own render |
-| 3 | `pal_validate` (local lint: workflow-JS subset + c: attribute whitelists) | M | Instant, offline, pre-push; complements server truth |
+| 3 | `pal_validate` (local lint: workflow-JS subset + c: attribute whitelists) | M | ✅ DONE — shipped 0.8.0; auto-runs inside pal_push (refuses on errors unless skipValidation). NOTE: Test*.do's `validated` does NOT cover workflow compile (ISR carries 63 object literals yet "validates"), so this offline lint is the only pre-builder compile guardrail |
 | 4 | `pal_sync_datasets` (+ lift the datasets-are-GUI-only rule, recreate never) | M | Real data modeling from the agent; reference-implementation-proven |
 | 5 | 3-way merge | M | Completes sync; builds on 0.6.0 baselines |
 | 6 | `seo-core` + `pal_seo_audit` | M | Rides on the preview plumbing |

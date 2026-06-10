@@ -15,28 +15,32 @@ const lock = require("../core/lock");
 
 const USAGE = [
     "Usage:",
-    "  palsync push   [--force] [--keep-lock] [--dir <workspace>]   Push local changes (no MCP server needed)",
+    "  palsync validate [--dir <workspace>]                         Offline code check (no server/login needed)",
+    "  palsync push   [--force] [--skip-validation] [--keep-lock] [--dir <ws>]   Push local changes (no MCP server needed)",
     "  palsync pull   [--force] [--dir <workspace>]                 Pull/sync from the server",
     "  palsync status [--dir <workspace>]                           Server drift, local changes, lock holder",
     "  palsync test   [--workflow console|web|transaction] [--no-preview] [--keep-lock] [--dir <ws>]",
     "                                                               Server-validate a workflow + open a live preview",
     "",
-    "  --force        push: override the server-drift refusal · pull: overwrite locally-modified files",
-    "  --keep-lock    push/test: keep holding the pal lock afterwards (default releases it)",
-    "  --workflow     test: which engine to test (default: auto-detected from the pal)",
-    "  --no-preview   test: validate only, don't open the browser preview",
-    "  --dir <ws>     workspace directory (default: current directory)",
+    "  --force            push: override the server-drift refusal · pull: overwrite locally-modified files",
+    "  --skip-validation  push: push even if the offline code check finds errors (not recommended)",
+    "  --keep-lock        push/test: keep holding the pal lock afterwards (default releases it)",
+    "  --workflow         test: which engine to test (default: auto-detected from the pal)",
+    "  --no-preview       test: validate only, don't open the browser preview",
+    "  --dir <ws>         workspace directory (default: current directory)",
     "",
-    "The workspace must have been set up once by `palsync` (it needs .palsync.json + keychain login)."
+    "validate needs only the local files (no .palsync.json, no login). The other commands need a",
+    "workspace set up once by `palsync` (.palsync.json + keychain login)."
 ].join("\n");
 
 function parseFlags(argv) {
-    const flags = { force: false, keepLock: false, dir: undefined, help: false, workflow: undefined, preview: true };
+    const flags = { force: false, keepLock: false, dir: undefined, help: false, workflow: undefined, preview: true, skipValidation: false };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === "--force" || a === "-f") flags.force = true;
         else if (a === "--keep-lock") flags.keepLock = true;
         else if (a === "--no-preview") flags.preview = false;
+        else if (a === "--skip-validation") flags.skipValidation = true;
         else if (a === "--help" || a === "-h") flags.help = true;
         else if (a === "--workflow") { flags.workflow = argv[++i]; if (!flags.workflow) throw new Error("--workflow requires a value"); }
         else if (a.startsWith("--workflow=")) flags.workflow = a.slice("--workflow=".length);
@@ -70,6 +74,17 @@ async function run(cmd, argv) {
     const flags = parseFlags(argv);
     if (flags.help) { console.log(USAGE); return 0; }
     const dir = path.resolve(flags.dir || process.cwd());
+
+    // validate is fully OFFLINE: no .palsync.json, no keychain, no login, no lock. It only
+    // reads the local files, so it works even in a half-set-up or disconnected workspace.
+    if (cmd === "validate") {
+        const { validateWorkspace, formatValidation: formatLint } = require("../core/validate");
+        const lint = validateWorkspace(dir);
+        console.log("palsync validate — " + dir + "\n");
+        console.log(formatLint(lint, { context: "validate" }));
+        return lint.errors > 0 ? 1 : 0;
+    }
+
     const ctx = await buildCliContext(dir);
     console.log("palsync " + cmd + " — " + ctx.record.palName + " @ " + ctx.record.cloudUrl + "\n");
 
@@ -96,7 +111,7 @@ async function run(cmd, argv) {
     }
 
     if (cmd === "push") {
-        const res = await toolByName("pal_push").run(ctx, { force: flags.force });
+        const res = await toolByName("pal_push").run(ctx, { force: flags.force, skipValidation: flags.skipValidation });
         console.log(res.message);
         // Release the lock the push acquired — no live session remains to hold it. (If the
         // push was refused before locking, releaseByGuid is a clean no-op.)

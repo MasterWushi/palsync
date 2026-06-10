@@ -74,9 +74,11 @@ available directly — it reads `.palsync.json` from the workspace and authentic
 OS keychain:
 
 ```sh
-palsync push     # push local changes; releases the lock after (use --keep-lock to hold it)
+palsync validate # offline code check — no login needed (workflow JS + markup rules)
+palsync push     # validate, then push; releases the lock after (--keep-lock to hold it)
 palsync pull     # sync from the server (refuses to overwrite un-pushed edits; --force overrides)
 palsync status   # server drift + un-pushed local changes (per file) + lock holder
+palsync test     # server-side workflow validation + live preview in your browser
 ```
 
 All take `--dir <workspace>` (default: current directory). Semantics are identical to the MCP
@@ -133,9 +135,10 @@ registration + launch commands rather than failing.
 
 | Tool | What it does |
 |------|--------------|
-| `pal_push` | Push local changes to the server. Refuses if the server advanced since your last pull (drift) unless forced. |
+| `pal_validate` | **Offline code check** — flags the PalBuilder breakers (object literals/`let`/`const` in workflows, unclosed void tags, undocumented `c:` attributes, `${}` in inline scripts, …) with file:line and the exact fix. Runs automatically inside `pal_push`. |
+| `pal_push` | **Validates first** (refuses on errors unless `skipValidation`), then pushes. Refuses if the server advanced since your last pull (drift) unless forced. |
 | `pal_pull` | Sync the pal from the server. Preserves new un-pushed local files; refuses (naming files) if it would overwrite un-pushed edits. |
-| `pal_test` | Run the server's real workflow **compile** (catches errors the save API can't) and open a **live preview** in your browser. |
+| `pal_test` | Run the server's own workflow validation and open a **live preview** in your browser (the agent never sees the credential-bearing URL). |
 | `pal_status` | Is the server newer than your last pull? Any un-pushed local changes? Who holds the lock? |
 | `pal_lock` | Acquire the lock (auto-reclaims your own stale lock). |
 | `pal_unlock` | Release the lock (never breaks another user's). |
