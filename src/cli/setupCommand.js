@@ -36,6 +36,7 @@ const USAGE = [
     "  --group <name>       narrow by group name",
     "  --with-design        inject the design system skills",
     "  --with-seo           inject the SEO skill (for WEB pals — public, crawled pages)",
+    "  --template <name>    apply a starter template after the pull (web-marketing, console-app; `palsync scaffold --list`)",
     "  --agent claude|codex which agent's MCP registration to write (default: claude)",
     "  --overwrite-local    if the workspace has un-pushed local edits, overwrite them (default: refuse)",
     "  --json               machine-readable result",
@@ -46,7 +47,7 @@ const USAGE = [
 
 function parse(argv) {
     const f = { pal: undefined, guid: undefined, dir: undefined, cloud: undefined, user: undefined,
-                profile: undefined, group: undefined, withDesign: false, withSeo: false, agent: "claude",
+                profile: undefined, group: undefined, withDesign: false, withSeo: false, template: undefined, agent: "claude",
                 overwriteLocal: false, json: false, help: false };
     const need = (i, name) => { const v = argv[i + 1]; if (v === undefined) throw new Error(name + " requires a value"); return v; };
     for (let i = 0; i < argv.length; i++) {
@@ -54,6 +55,7 @@ function parse(argv) {
         if (a === "--help" || a === "-h") f.help = true;
         else if (a === "--with-design" || a === "-d") f.withDesign = true;
         else if (a === "--with-seo") f.withSeo = true;
+        else if (a === "--template") { f.template = need(i, "--template"); i++; }
         else if (a === "--overwrite-local") f.overwriteLocal = true;
         else if (a === "--json") f.json = true;
         else if (a === "--pal") { f.pal = need(i, "--pal"); i++; }
@@ -128,6 +130,15 @@ async function run(argv) {
 
     const result = await workspace.setup({ session, cloudUrl, sel, workspaceDir, withDesign: flags.withDesign, withSeo: flags.withSeo, agent: flags.agent, onDrift, log });
 
+    // Optional starter template: applied AFTER the pull so it can see what the pal already has
+    // (existing files are never overwritten; workflow content fills only empty/stub slots).
+    let scaffold = null;
+    if (flags.template) {
+        const { applyTemplate, formatScaffoldReport } = require("../core/scaffold");
+        scaffold = applyTemplate(workspaceDir, flags.template, { palName: resolved.name });
+        if (!flags.json) console.log("\n" + formatScaffoldReport(scaffold));
+    }
+
     // Release the lock — no agent is launched here, so don't strand it. The MCP server re-acquires
     // it on the agent's first tool call (own-stale-reclaim).
     try { await lock.releaseByGuid(session, resolved.guid); } catch (e) { /* best-effort */ }
@@ -137,7 +148,8 @@ async function run(argv) {
             ok: true, pal: resolved.name, guid: resolved.guid, workspaceDir,
             pulledFiles: result.pulledFiles, dataFiles: result.dataFiles,
             skills: result.injected && result.injected.skills, agent: flags.agent,
-            mcpConfig: result.mcpConfig
+            mcpConfig: result.mcpConfig,
+            scaffold: scaffold ? { template: scaffold.template, created: scaffold.created, workflows: scaffold.workflows } : null
         }, null, 2));
     } else {
         console.log("\nWorkspace ready: " + workspaceDir);

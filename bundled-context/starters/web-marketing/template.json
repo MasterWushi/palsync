@@ -1,0 +1,13 @@
+{
+  "description": "Marketing/landing site for a WEB pal: SEO-complete page shell, navbar/hero/footer fragments, Editorial Warmth design tokens, scroll-reveal. Customize the copy; the structure, design floor, and SEO floor are already correct.",
+  "palType": "palTypeWeb",
+  "files": [
+    { "path": "pages/home.html" },
+    { "path": "fragments/navbar.html" },
+    { "path": "fragments/home-body.html" },
+    { "path": "fragments/footer.html" },
+    { "path": "styles/theme.css" },
+    { "path": "scripts/reveal.js" },
+    { "path": "workflows/web.js" }
+  ]
+}

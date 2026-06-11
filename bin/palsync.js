@@ -19,7 +19,7 @@ if (argv.includes("--version") || argv.includes("-v")) {
 // Subcommands: `palsync push|pull|status` — headless sync that needs NO MCP server and NO agent
 // (the recovery path when a session ends before a push, and a plain terminal workflow). They
 // skip the launcher preflight entirely: no Claude/Codex required, just .palsync.json + keychain.
-const SUBCOMMANDS = ["push", "pull", "status", "test", "preview", "validate", "sync-datasets", "seo-audit"];
+const SUBCOMMANDS = ["push", "pull", "status", "test", "preview", "validate", "sync-datasets", "seo-audit", "scaffold"];
 if (SUBCOMMANDS.includes(argv[0])) {
     require("../src/cli/syncCommands").run(argv[0], argv.slice(1))
         .then(code => process.exit(code))

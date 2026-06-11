@@ -1,0 +1,19 @@
+<html xmlns:c="contractpal">
+    <head>
+        <title>{{PAL_NAME}}</title>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&amp;family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500&amp;display=swap" rel="stylesheet" />
+        <link rel="STYLESHEET" type="text/css" href="../Styles/theme.css" />
+        <script type="text/javascript" src="../Scripts/app.js"></script>
+    </head>
+    <body>
+        <div id="cp-root">
+            <c:fragment name="navbar" />
+            <div id="body" class="app-body">
+                <c:fragment name="${frag}" />
+            </div>
+            <c:debug />
+        </div>
+    </body>
+</html>

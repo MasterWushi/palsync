@@ -1,0 +1,58 @@
+<c:ignore xmlns:c="contractpal">
+  <main id="main" class="page">
+
+    <!-- Page header: one title, one primary action (design-core: one primary per view). -->
+    <div class="page-head">
+      <div>
+        <span class="eyebrow">Overview</span>
+        <h1 class="page-title">Dashboard</h1>
+      </div>
+      <c:a action="getDashboard" class="btn btn-primary">Refresh</c:a>
+    </div>
+
+    <!-- Stat cards: number-forward, tabular figures (design-core recipe). The workflow sets
+         ${statCount} etc. on the payload; replace with your real metrics. -->
+    <div class="stat-row">
+      <div class="stat">
+        <span class="eyebrow">Records</span>
+        <span class="stat-value">${statCount}</span>
+      </div>
+      <div class="stat">
+        <span class="eyebrow">This week</span>
+        <span class="stat-value">${statWeek}</span>
+      </div>
+      <div class="stat">
+        <span class="eyebrow">Status</span>
+        <span class="stat-value stat-value-sm">${statStatus}</span>
+      </div>
+    </div>
+
+    <!-- Data table with the c:list pattern + a designed empty state (one line + one action). -->
+    <div class="panel">
+      <h2 class="panel-title">Recent items</h2>
+      <c:if test="${hasItems eq 'true'}">
+        <table class="tbl">
+          <thead>
+            <tr><th>Name</th><th class="num">Value</th><th>Updated</th></tr>
+          </thead>
+          <tbody>
+            <c:list name="items" id="item">
+              <tr>
+                <td>${item.name}</td>
+                <td class="num">${item.value}</td>
+                <td class="muted">${item.updated}</td>
+              </tr>
+            </c:list>
+          </tbody>
+        </table>
+      </c:if>
+      <c:if test="${hasItems eq 'false'}">
+        <div class="empty">
+          <p>No items yet.</p>
+          <c:a action="getDashboard" class="btn btn-secondary">Refresh</c:a>
+        </div>
+      </c:if>
+    </div>
+
+  </main>
+</c:ignore>

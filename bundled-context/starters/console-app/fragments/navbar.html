@@ -1,0 +1,12 @@
+<c:ignore xmlns:c="contractpal">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <span class="topbar-brand">{{PAL_NAME}}</span>
+      <nav class="topbar-links" aria-label="Primary">
+        <c:set name="dashClass" test="${active eq 'dashboard'}" true="topbar-link is-active" false="topbar-link" />
+        <c:a action="getDashboard" class="${dashClass}">Dashboard</c:a>
+        <!-- Add more nav items the same way: a c:set for the active class + a c:a per action. -->
+      </nav>
+    </div>
+  </header>
+</c:ignore>

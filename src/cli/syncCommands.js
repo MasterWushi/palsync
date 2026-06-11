@@ -34,6 +34,7 @@ const USAGE = [
     "  palsync preview [--workflow console|web|transaction] [--keep-lock] [--dir <ws>]",
     "                                                               Render the pal (web: prints the HTML; console: opens a browser)",
     "  palsync seo-audit [--keep-lock] [--dir <ws>]             On-page SEO audit of a WEB pal's rendered page",
+    "  palsync scaffold  [--template <name>] [--list] [--dir <ws>]  Apply a starter template (offline; --list shows them)",
     "  palsync sync-datasets [--datasets a,b] [--recreate] [--keep-lock] [--dir <ws>]",
     "                                                               Provision dataset tables from pal.json (safe by default)",
     "",
@@ -51,12 +52,15 @@ const USAGE = [
 ].join("\n");
 
 function parseFlags(argv) {
-    const flags = { force: false, keepLock: false, dir: undefined, help: false, workflow: undefined, preview: true, skipValidation: false, datasets: undefined, recreate: false };
+    const flags = { force: false, keepLock: false, dir: undefined, help: false, workflow: undefined, preview: true, skipValidation: false, datasets: undefined, recreate: false, template: undefined, list: false };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === "--force" || a === "-f") flags.force = true;
         else if (a === "--keep-lock") flags.keepLock = true;
         else if (a === "--no-preview") flags.preview = false;
+        else if (a === "--list") flags.list = true;
+        else if (a === "--template") { flags.template = argv[++i]; if (!flags.template) throw new Error("--template requires a value"); }
+        else if (a.startsWith("--template=")) flags.template = a.slice("--template=".length);
         else if (a === "--skip-validation") flags.skipValidation = true;
         else if (a === "--recreate") flags.recreate = true;
         else if (a === "--help" || a === "-h") flags.help = true;
@@ -103,6 +107,21 @@ async function run(cmd, argv) {
         console.log("palsync validate — " + dir + "\n");
         console.log(formatLint(lint, { context: "validate" }));
         return lint.errors > 0 ? 1 : 0;
+    }
+
+    // scaffold is OFFLINE too (writes template files + pal.json entries; push ships them later).
+    if (cmd === "scaffold") {
+        const { applyTemplate, listTemplates, formatScaffoldReport } = require("../core/scaffold");
+        if (flags.list || !flags.template) {
+            const all = listTemplates();
+            console.log("Available templates:\n" + all.map(t => "  " + t.name + " — " + t.description).join("\n") +
+                "\n\nApply one with: palsync scaffold --template <name> [--dir <workspace>]");
+            return flags.template ? 1 : 0;
+        }
+        const report = applyTemplate(dir, flags.template, {});
+        console.log("palsync scaffold — " + dir + "\n");
+        console.log(formatScaffoldReport(report));
+        return 0;
     }
 
     const ctx = await buildCliContext(dir);

@@ -90,6 +90,7 @@ palsync test     # server-side workflow validation + live preview in your browse
 palsync seo-audit # on-page SEO audit of a WEB pal's rendered page
 palsync preview  # render the pal (web: prints the HTML; console: opens a browser)
 palsync sync-datasets  # provision dataset tables from pal.json (safe by default)
+palsync scaffold --template <name>  # apply a starter template (offline; --list shows them)
 ```
 
 All take `--dir <workspace>` (default: current directory). Semantics are identical to the MCP
@@ -122,6 +123,26 @@ palsync --with-design   # + the Nimblewire design system, for UI work
 
 > This will grow to `design-marketing` / `design-app` / `design-enterprise` once those skills exist;
 > `--with-design` will inject the design set as a whole.
+
+## Template starters
+
+Start a new pal from a correct, designed, SEO-sound skeleton instead of a blank page:
+
+```sh
+palsync scaffold --list                              # see the available templates
+palsync setup --pal "My New Pal" --template web-marketing --with-design --with-seo
+palsync scaffold --template console-app --dir <ws>   # or apply to an existing workspace
+```
+
+- **`web-marketing`** (web pal) — SEO-complete page shell (the audited head recipe), navbar/hero/
+  footer fragments, Editorial Warmth design tokens, scroll-reveal, `web.js` routing skeleton.
+- **`console-app`** (console pal) — console shell (`cp-root` + navbar + swappable `${frag}` slot),
+  dashboard fragment with stat cards and a designed empty state, `run()` workflow skeleton.
+
+Starters never overwrite existing files, substitute the pal's name into the placeholders, and pass
+`palsync validate` with zero findings out of the box. **Workflows** are content-filled only when the
+pal already has the slot (push can't create workflow slots); otherwise the template is saved as a
+`.template` reference with instructions.
 
 ### Choosing an agent
 
