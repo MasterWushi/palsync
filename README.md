@@ -125,6 +125,20 @@ palsync --with-design   # + the Nimblewire design system, for UI work
 > This will grow to `design-marketing` / `design-app` / `design-enterprise` once those skills exist;
 > `--with-design` will inject the design set as a whole.
 
+## Spec-to-ship workflow (autonomous builds)
+
+Two always-injected skills turn a description into a built pal:
+
+1. **`pal-spec`** interviews you (10–15 questions, proposes answers from existing material) and
+   writes `SPEC.md` — real copy, real tokens, real schemas, tool-checkable acceptance criteria —
+   plus `EXECUTION.md`, a task list with per-task model tiers and success conditions.
+2. **`pal-loop`** executes it: one task → verify with the palsync tools (validate → push →
+   preview → seo-audit) → checkpoint to disk → git commit → next. Blocked tasks escalate with
+   the exact decision needed. Any new session resumes from `EXECUTION.md` — state never lives
+   only in context. The loop never deploys (standing policy) and never invents content.
+
+Say "spec out <what you want>" to start, "run the loop" / "resume the build" to execute.
+
 ## Template starters
 
 Start a new pal from a correct, designed, SEO-sound skeleton instead of a blank page:

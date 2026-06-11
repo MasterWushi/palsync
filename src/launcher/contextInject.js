@@ -13,7 +13,9 @@ const path = require("path");
 const BUNDLE_DIR = path.join(__dirname, "..", "..", "bundled-context");
 
 // Always-on skills — injected every session (backend/bugfix sessions want these too).
-const ALWAYS_ON_SKILLS = ["palbuilder-frontend", "palbuilder-backend"];
+// pal-spec/pal-loop ride along always: skills cost no context until the agent opens them,
+// and any session may be asked to "spec this" or "resume the build".
+const ALWAYS_ON_SKILLS = ["palbuilder-frontend", "palbuilder-backend", "pal-spec", "pal-loop"];
 
 // Design skills — OPT-IN (--with-design; default off) so non-UI sessions stay lean. Each entry
 // names a skill dir under bundled-context/skills/ and any companion asset files (paths may be
@@ -67,6 +69,10 @@ function syncSection(palName) {
         "   checks the rendered page's SEO (title/description, ABSOLUTE og: URLs, one H1, JSON-LD,",
         "   img alt text) and tells you exactly what to fix. Do not declare a public web page done",
         "   while it reports errors. (Read the seo-core skill first when it's present.)",
+        "",
+        "**Building a whole project?** The `pal-spec` skill interviews the user and produces",
+        "SPEC.md + EXECUTION.md; the `pal-loop` skill executes them task-by-task with on-disk",
+        "checkpoints. If the workspace has an EXECUTION.md with unfinished tasks, read pal-loop first.",
         "",
         "- If a push is **refused for drift** (someone saved on the server since your last pull), you have",
         "  two good options: `pal_pull` then redo your edit, OR **`pal_merge`** to combine your changes",
