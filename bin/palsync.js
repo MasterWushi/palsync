@@ -29,10 +29,24 @@ if (SUBCOMMANDS.includes(argv[0])) {
         });
     return; // launcher flow below never runs for subcommands
 }
+
+// `palsync setup` — NON-INTERACTIVE workspace creation (headless / autonomous boxes). Has its
+// own module + flags (incl. --agent), so it's dispatched before the interactive launcher's
+// flag parsing. No preflight (no agent binary required just to prepare a workspace).
+if (argv[0] === "setup") {
+    require("../src/cli/setupCommand").run(argv.slice(1))
+        .then(code => process.exit(code))
+        .catch(err => {
+            process.stderr.write("palsync setup failed: " + (err && err.message ? err.message : err) + "\n");
+            process.exit(1);
+        });
+    return;
+}
 if (argv[0] === "help" || argv.includes("--help") || argv.includes("-h")) {
     process.stdout.write(
         "palsync — PalBuilder + AI agents\n\n" +
         "  palsync                 launch: login → pick pal → pull+lock → inject skills → open agent\n" +
+        "  palsync setup --pal \"<name>\"   headless workspace creation (no prompts; for autonomous/agent boxes)\n" +
         "  palsync push|pull|status|test|preview|validate|sync-datasets   headless ops for a workspace (no MCP/agent needed)\n" +
         "  palsync --with-design   inject the design system for UI work\n" +
         "  palsync --agent codex   use Codex instead of Claude Code\n" +

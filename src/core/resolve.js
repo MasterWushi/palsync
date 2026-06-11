@@ -14,32 +14,58 @@ function timestampText(node) {
     return String(node);
 }
 
-async function resolveServerPalByGuid(session, guid) {
+// Normalize a PalInfoEx + its profile/group context into palsync's pal shape.
+function shapePal(p, profile, group) {
+    return {
+        id: p.id,                                  // transient — used now for getPal/lock, never persisted
+        guid: p.guid,                              // stable — persisted in .palsync.json
+        name: p.name,
+        description: p.description,
+        lastModifiedDate: timestampText(p.lastModifiedDate),  // drift marker
+        profileId: profile.profileId,
+        profileName: profile.profileName,
+        groupId: group.groupId,
+        groupName: group.name
+    };
+}
+
+// Enumerate EVERY server pal once (profile -> group -> pal), shaped. Optional name filters
+// (case-insensitive substring) on profile/group narrow the walk — used to disambiguate a
+// by-name lookup on a big account. The shared walk behind both resolvers.
+async function enumerateServerPals(session, { profile: profileFilter, group: groupFilter } = {}) {
+    const out = [];
     const profileResp = await CloudPistonAPIManager.getProfileList(session);
     const profiles = (profileResp && profileResp.profileList && profileResp.profileList["com.contractpal.pal.ProfileInfo"]) || [];
     for (const profile of profiles) {
+        if (profileFilter && !new RegExp(profileFilter, "i").test(profile.profileName || "")) continue;
         const groupResp = await CloudPistonAPIManager.getGroupList(session, profile.profileId);
         const groups = (groupResp && groupResp.groupList && groupResp.groupList["com.contractpal.pal.GroupInfo"]) || [];
         for (const group of groups) {
+            if (groupFilter && !new RegExp(groupFilter, "i").test(group.name || "")) continue;
             const palResp = await CloudPistonAPIManager.getPalList(session, profile.profileId, group.groupId, { includeTest: true, includeInstalled: true });
             const pals = (palResp && palResp.palInfoList && palResp.palInfoList.PalInfoEx) || [];
-            const match = pals.find(p => p.guid === guid);
-            if (match) {
-                return {
-                    id: match.id,
-                    guid: match.guid,
-                    name: match.name,
-                    description: match.description,
-                    lastModifiedDate: timestampText(match.lastModifiedDate),
-                    profileId: profile.profileId,
-                    profileName: profile.profileName,
-                    groupId: group.groupId,
-                    groupName: group.name
-                };
-            }
+            for (const p of pals) out.push(shapePal(p, profile, group));
         }
     }
-    return null;
+    return out;
 }
 
-module.exports = { resolveServerPalByGuid, timestampText };
+async function resolveServerPalByGuid(session, guid) {
+    const all = await enumerateServerPals(session);
+    return all.find(p => p.guid === guid) || null;
+}
+
+// Resolve a pal BY NAME (the "don't hardcode GUIDs" path). Returns { resolved, candidates }:
+//   - exactly one match  → resolved is it, candidates: [it]
+//   - none               → resolved null, candidates [] (caller errors with suggestions)
+//   - multiple           → resolved null, candidates lists them (caller errors: ambiguous)
+// Exact (case-sensitive) name wins; if none, falls back to case-insensitive equality. Optional
+// profile/group filters disambiguate. Never throws — the CLI shapes the message.
+async function resolveServerPalByName(session, name, { profile, group } = {}) {
+    const all = await enumerateServerPals(session, { profile, group });
+    let matches = all.filter(p => p.name === name);
+    if (!matches.length) matches = all.filter(p => String(p.name).toLowerCase() === String(name).toLowerCase());
+    return { resolved: matches.length === 1 ? matches[0] : null, candidates: matches, all };
+}
+
+module.exports = { resolveServerPalByGuid, resolveServerPalByName, enumerateServerPals, timestampText, shapePal };
