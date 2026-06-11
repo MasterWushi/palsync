@@ -1,18 +1,17 @@
 "use strict";
-// Build the MCP session context from a workspace: read .palsync.json, pull the password from
-// the OS keychain (never env, never disk), authenticate, and acquire the session lock with the
-// guaranteed-release lifecycle. Returns ctx used by every tool.
+// Build the MCP session context from a workspace: read .palsync.json, resolve the password
+// (env-var first, then OS keychain — so this runs headless on an autonomous-agent box with no
+// keychain), authenticate, and acquire the session lock with the guaranteed-release lifecycle.
+// Returns ctx used by every tool. The password is never written to disk or returned to the agent.
 const palsyncfile = require("../core/palsyncfile");
-const keychain = require("../platform/keychain");
+const { resolvePassword, credentialError } = require("../auth/credentialStore");
 const { authenticate } = require("../core/session");
 const { LockLifecycle } = require("../lifecycle/lockLife");
 
 async function buildContext(workspaceDir, { idleMs, log = () => {}, acquireLock = true } = {}) {
     const record = await palsyncfile.read(workspaceDir);
-    const password = keychain.getPassword(record.cloudUrl, record.username);
-    if (!password) {
-        throw new Error("No keychain credential for " + record.username + " @ " + record.cloudUrl + " — run the launcher to log in.");
-    }
+    const { password } = resolvePassword(record.cloudUrl, record.username);
+    if (!password) throw credentialError(record.cloudUrl, record.username);
     const session = await authenticate(record.cloudUrl, record.username, password);
 
     // exitOnIdle:false (also the constructor default) — the MCP server's lifetime belongs to
