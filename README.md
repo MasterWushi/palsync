@@ -8,11 +8,18 @@ push and pull your pal through an MCP server. Then you just talk to Claude — i
 PalBuilder code and syncs your changes, with **auto-locking** and **drift protection** so you never
 silently clobber someone else's work.
 
-- 🔐 **Login once** — credentials stored in your OS keychain, never on disk or in env vars.
+- 🔐 **Login once** — credentials in your OS keychain on desktop; `CP_PASS` env var on headless boxes.
 - ⬇️ **Pull + lock** your pal automatically; the lock is released on exit, idle, or reclaimed after a crash.
 - 🧠 **PalBuilder skills auto-injected** so Claude writes correct `c:` tags, fragments, and workflows.
 - ⬆️ **Push from the conversation** — with a drift guard that refuses to overwrite newer server changes.
+- 🤖 **Works with any agent** — Claude Code, Codex, OpenCode, Hermes, or any MCP client; runs headless for autonomous agents. See **[HEADLESS.md](./HEADLESS.md)**.
 - 🖥️ **Cross-platform** — macOS, Windows, Linux.
+
+> **palsync is a substrate, not an agent runtime.** It gives any agent correct PalBuilder behavior
+> and safe sync; you pick the runtime and the model (Claude, gpt-5.5, DeepSeek, Qwen, local). It
+> builds no model router — model-agnostic and cheap-model support come from your harness. For
+> headless/autonomous setups (e.g. an always-on agent box) and connecting non-Claude harnesses, see
+> **[HEADLESS.md](./HEADLESS.md)**.
 
 ## Install / Update
 
