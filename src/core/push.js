@@ -10,8 +10,9 @@ const { Pal } = require("../../lib/pal");
 const { CloudPistonAPIManager } = require("../../lib/apiManager");
 const { resolveServerPalByGuid } = require("./resolve");
 const { manifestPaths } = require("./pull");
-const { validateWorkspace } = require("./validate");
+const { validateWorkspace, lintContent } = require("./validate");
 const { diffWorkspace } = require("./localDrift");
+const baseline = require("./baseline");
 const lock = require("./lock");
 const drift = require("./drift");
 
@@ -27,17 +28,60 @@ const UNCREATABLE = [
 
 function isFile(p) { try { return fs.statSync(p).isFile(); } catch (e) { return false; } }
 
-// The set of POSIX rel paths this push CHANGES (added + modified vs the last-pulled baseline),
-// for scoping the pre-push lint. Returns null when there's no per-file baseline to diff against
-// (fresh/legacy record) — caller then lints the whole workspace. pal.json itself is dropped (it's
-// a manifest, not a lintable source file).
-function changedFileSet(record, workspaceDir) {
-    if (!record || !record.fileHashes) return null;
+function errorsByRule(findings) {
+    const m = {};
+    for (const f of findings) if (f.severity === "error") m[f.rule] = (m[f.rule] || 0) + 1;
+    return m;
+}
+
+// The PRE-PUSH GATE lint. Blocks a push ONLY on errors THIS change is responsible for:
+//   - NEW files (added vs baseline): every error counts — the agent created the file.
+//   - MODIFIED files with a baseline snapshot: lint the baseline vs the current version and block
+//     only on the NET-NEW errors (per rule count). Pre-existing errors a touched file already had
+//     (e.g. a legacy workflow's object literals) do NOT block — they're surfaced as informational,
+//     not a wall the agent must rewrite legacy code to clear.
+//   - No per-file hash baseline (fresh/legacy record): lint the whole workspace (conservative).
+//   - Baseline hashes but no baseline CONTENT (pre-feature workspace): block on all errors in
+//     changed files (the prior behavior) — we can't tell new from old without the content.
+// Returns the standard { errors, warnings, findings, filesChecked, scope } shape.
+function gateLint(record, workspaceDir) {
+    if (!record || !record.fileHashes) return validateWorkspace(workspaceDir); // no diff possible
     const d = diffWorkspace(record, workspaceDir);
-    const set = new Set();
-    for (const rel of d.added) if (rel !== "pal.json") set.add(rel);
-    for (const rel of d.changed) if (rel !== "pal.json") set.add(rel);
-    return set;
+    const changed = [...d.added, ...d.changed].filter(rel => rel !== "pal.json");
+    if (!changed.length) return { errors: 0, warnings: 0, findings: [], filesChecked: 0, scope: "new-errors" };
+    const addedSet = new Set(d.added);
+    const haveBaselineContent = baseline.exists(workspaceDir);
+    const findings = [];
+    for (const rel of changed) {
+        let current;
+        try { current = lintContent(rel, fs.readFileSync(path.join(workspaceDir, ...rel.split("/")), "utf8")); }
+        catch (e) { continue; }
+        // warnings never block but always surface
+        for (const f of current) if (f.severity === "warn") findings.push(f);
+        const curErr = current.filter(f => f.severity === "error");
+        if (!curErr.length) continue;
+
+        const baseContent = (!addedSet.has(rel) && haveBaselineContent) ? baseline.read(workspaceDir, rel) : null;
+        if (baseContent == null) { findings.push(...curErr); continue; } // added / no baseline → all new
+
+        // MODIFIED with a baseline: block only on the net-new errors per rule.
+        const baseCount = errorsByRule(lintContent(rel, baseContent));
+        const curCount = errorsByRule(curErr);
+        for (const rule of Object.keys(curCount)) {
+            const introduced = curCount[rule] - (baseCount[rule] || 0);
+            if (introduced <= 0) continue;
+            const sample = curErr.find(f => f.rule === rule);
+            findings.push({
+                file: rel, line: sample.line, column: sample.column, severity: "error", rule,
+                message: "Your edit INTRODUCED " + introduced + " new '" + rule + "' error(s) in " + rel +
+                    (baseCount[rule] ? " (this file already had " + baseCount[rule] + " before your change — those do NOT block you)" : "") +
+                    ". Fix the one(s) you added — " + sample.message
+            });
+        }
+    }
+    const errors = findings.filter(f => f.severity === "error").length;
+    const warnings = findings.filter(f => f.severity === "warn").length;
+    return { errors, warnings, findings, filesChecked: changed.length, scope: haveBaselineContent ? "new-errors" : "changed" };
 }
 
 // Best-effort: the set of entry-strings the server already has, per uncreatable type. Used to tell
@@ -101,15 +145,11 @@ function normalizeValidation(resp) {
 // on success. Returns a result object (never throws on drift/lock — returns a refusal).
 async function push(session, record, workspaceDir, { force = false, overrideLock = false, skipValidation = false } = {}) {
     // 0) PRE-PUSH LINT (offline): catch the mistakes that silently break in PalBuilder (invalid
-    //    workflow JS, bad markup) BEFORE spending a network round-trip. ERRORS block the push
-    //    unless skipValidation is set; WARNINGS never block — they ride along for the agent.
-    //    SCOPE = only the files THIS push changes (added/modified vs the last-pulled baseline),
-    //    so a pal carrying PRE-EXISTING violations in untouched files (e.g. a legacy workflow
-    //    full of object literals) is never permanently un-pushable — the gate holds the agent
-    //    responsible for its own changes, not for the pal's history. With no baseline (a fresh
-    //    or legacy record) we can't tell what changed, so we lint the whole tree.
-    const changed = changedFileSet(record, workspaceDir);
-    const lint = validateWorkspace(workspaceDir, changed ? { only: changed } : {});
+    //    workflow JS, bad markup) BEFORE spending a network round-trip. ERRORS block unless
+    //    skipValidation is set; WARNINGS never block. The gate holds the agent responsible only
+    //    for the errors its OWN change introduced — not the pal's pre-existing history (see
+    //    gateLint): editing one function in a legacy-bad file won't force a rewrite of that file.
+    const lint = gateLint(record, workspaceDir);
     if (lint.errors > 0 && !skipValidation) {
         return { pushed: false, refused: "validation", lint };
     }
@@ -149,9 +189,15 @@ async function push(session, record, workspaceDir, { force = false, overrideLock
     const success = !!(saveResp && saveResp.success);
 
     // 4) refresh the stored marker (the save advanced it) by re-resolving the guid.
+    let pushedPaths = null;
     if (success) {
         const after = await resolveServerPalByGuid(session, record.palGuid);
         record.lastModifiedDate = after ? after.lastModifiedDate : liveMarker;
+        // The pushed files now == server — refresh the baseline CONTENT snapshot so the NEXT
+        // push's new-errors gate diffs against this state (incl. any legacy errors the agent
+        // legitimately pushed past with skipValidation, which then become "pre-existing").
+        pushedPaths = [...manifestPaths(pal)];
+        baseline.snapshot(workspaceDir, pushedPaths);
     }
 
     // serverPaths: what the server tracks after this save = the pushed manifest (uncreatable
@@ -164,7 +210,7 @@ async function push(session, record, workspaceDir, { force = false, overrideLock
     return { pushed: success, refused: success ? undefined : "save-rejected",
              forced: !!force, filesPushed: injected.length, validation,
              newMarker: record.lastModifiedDate, skipped, lint, skippedValidation: skipValidation && lint.errors > 0,
-             serverPaths: success ? [...manifestPaths(pal)] : null };
+             serverPaths: pushedPaths };
 }
 
 module.exports = { push, buildSaveTask, normalizeValidation };

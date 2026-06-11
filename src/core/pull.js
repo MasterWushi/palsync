@@ -16,6 +16,9 @@ const path = require("path");
 const { CloudPistonAPIManager } = require("../../lib/apiManager");
 const { Pal } = require("../../lib/pal");
 const { resolveServerPalByGuid } = require("./resolve");
+// Named baselineStore (not `baseline`) on purpose: pull()'s options already destructure a
+// `baseline` (the fileHashes map for the sync decision), which would shadow this inside the fn.
+const baselineStore = require("./baseline");
 
 // The 13 manifest folders pull manages. Files INSIDE these are pull-owned and may be deleted
 // as stale; anything outside is left alone.
@@ -269,7 +272,14 @@ async function pull(session, guid, targetDir, { baseline = null } = {}) {
     // serverPaths = exactly the files the SERVER tracks right now (what expandPalFiles wrote).
     // Callers build the next fileHashes baseline from this — preserved local files must NOT
     // enter the baseline, or the next pull would mistake them for server-side deletes.
-    return { resolved, serverPal, pal, written, removed, preserved, serverPaths: [...serverSet] };
+    const serverPaths = [...serverSet];
+
+    // Snapshot the baseline CONTENT (lintable server files, now == server) for the new-errors
+    // pre-push gate. Preserved local-only files are excluded (not in serverPaths), so they read
+    // as "added" (no baseline) and any errors in them correctly count as new.
+    baselineStore.snapshot(targetDir, serverPaths);
+
+    return { resolved, serverPal, pal, written, removed, preserved, serverPaths };
 }
 
 module.exports = { pull, expandPalFiles, clearContent, saveLocal, manifestPaths, listTrackedFiles, pruneEmptySubdirs, planSync, mergePreservedEntries, ALL_FOLDERS, CREATABLE_FOLDERS };

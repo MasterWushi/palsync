@@ -113,4 +113,14 @@ function formatValidation(result, { context = "validate" } = {}) {
     return head + "\n" + meaning + "\n\n" + blocks.join("\n\n");
 }
 
-module.exports = { validateWorkspace, formatValidation };
+// Lint a single file's CONTENT (not read from disk), dispatching by its rel path. Used by the
+// pre-push gate to lint a baseline version vs the current version. Must mirror the folder
+// dispatch in validateWorkspace and the isLintable set in core/baseline.
+function lintContent(rel, content) {
+    if (rel.startsWith("workflows/") && rel.endsWith(".js")) return lintWorkflowJs(rel, content);
+    if ((rel.startsWith("pages/") || rel.startsWith("fragments/")) && MARKUP_EXT.has(path.extname(rel).toLowerCase())) return lintMarkup(rel, content);
+    if (rel.startsWith("datasets/") && rel.endsWith(".json")) return lintDatasetDef(rel, content);
+    return [];
+}
+
+module.exports = { validateWorkspace, formatValidation, lintContent };
