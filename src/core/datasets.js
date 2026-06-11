@@ -107,8 +107,14 @@ async function syncDatasets(session, record, workspaceDir, { datasets, recreate 
     // sync against a stale definition.
     const saveResult = await push(session, record, workspaceDir, { force });
     if (!saveResult.pushed) {
-        return { synced: false, refused: "save-failed", saveResult, targets, schemas,
-                 reason: "Could not save the pal before syncing (" + (saveResult.refused || "unknown") + "). The dataset definitions must be saved first. Resolve the save issue, then sync." };
+        // push refuses with a named reason (drift/validation/lock) OR returns pushed:false with no
+        // reason when the SAVE itself was rejected by the server — in that case the server's notes
+        // are in saveResult.validation. Surface whichever we have so the message is actionable.
+        const serverNotes = (saveResult.validation || []).map(v => (v.group || "?") + "/" + (v.object || "-") + ": " + v.message);
+        const why = saveResult.refused || (serverNotes.length ? "server rejected the save" : "unknown");
+        return { synced: false, refused: "save-failed", saveResult, targets, schemas, serverNotes,
+                 reason: "Could not save the pal before syncing (" + why + "). The dataset definitions must be saved first." +
+                     (serverNotes.length ? "\nServer said:\n   - " + serverNotes.join("\n   - ") : "") };
     }
 
     // STEP 2: provision the tables. We hold the lock from the push (session.lockInfo set).
@@ -118,6 +124,14 @@ async function syncDatasets(session, record, workspaceDir, { datasets, recreate 
     }
     const resp = await CloudPistonAPIManager.syncDataSets(session, resolved.id, !!recreate, targets);
     const ok = syncSucceeded(resp);
+
+    // SyncDataSet.do is itself a server-side save — it ADVANCES lastModifiedDate. Refresh the
+    // stored marker so the NEXT operation (another sync, a push) doesn't see false drift against
+    // a stale marker. (Without this, a second sync always fails "drift".)
+    if (ok) {
+        const after = await resolveServerPalByGuid(session, record.palGuid);
+        if (after) record.lastModifiedDate = after.lastModifiedDate;
+    }
 
     return {
         synced: ok, targets, schemas, recreated: !!recreate,

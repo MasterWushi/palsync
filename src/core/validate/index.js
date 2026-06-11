@@ -15,6 +15,7 @@ const fs = require("fs");
 const path = require("path");
 const { lintWorkflowJs } = require("./workflowJs");
 const { lintMarkup } = require("./markup");
+const { lintDatasetDef } = require("./datasetDef");
 
 const MARKUP_EXT = new Set([".html", ".htm", ".xhtml"]);
 
@@ -66,6 +67,17 @@ function validateWorkspace(workspaceDir, { only = null } = {}) {
             filesChecked++;
             findings.push(...lintMarkup(f.rel, src));
         }
+    }
+
+    // datasets/*.json (definition sanity — invalid fieldType, missing PK; all WARNINGS)
+    const dsFiles = [];
+    walkFiles(path.join(workspaceDir, "datasets"), "datasets", dsFiles);
+    for (const f of dsFiles) {
+        if (!f.rel.endsWith(".json") || !inScope(f.rel)) continue;
+        const src = readUtf8(f.abs);
+        if (src == null) continue;
+        filesChecked++;
+        findings.push(...lintDatasetDef(f.rel, src));
     }
 
     findings.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);

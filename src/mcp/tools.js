@@ -182,10 +182,12 @@ const TOOLS = [
             if (res.refused === "save-failed") {
                 // Bubble up the underlying push refusal text so the agent knows exactly what to fix.
                 const sr = res.saveResult || {};
-                let detail = sr.refused || "unknown";
+                let detail;
                 if (sr.refused === "validation" && sr.lint) detail = "code errors — run pal_validate:\n" + formatLint(sr.lint, { context: "pre-push" });
                 else if (sr.refused === "drift") detail = "the server changed since your last pull — run pal_pull first (or force:true).";
-                return Object.assign(res, { message: "REFUSED: could not save the dataset definitions before provisioning (" + (sr.refused || "unknown") + ").\n" + detail });
+                else if (res.serverNotes && res.serverNotes.length) detail = "the server rejected the save:\n   - " + res.serverNotes.join("\n   - ");
+                else detail = sr.refused || "unknown reason";
+                return Object.assign(res, { message: "REFUSED: could not save the dataset definitions before provisioning.\n" + detail });
             }
             if (res.refused === "no-datasets" || res.refused === "unknown-dataset") {
                 return Object.assign(res, { message: "REFUSED: " + res.reason });
