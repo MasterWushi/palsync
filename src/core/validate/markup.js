@@ -167,16 +167,18 @@ function lintMarkup(rel, src) {
         const isExternal = tag.attrs.some(a => a.name.toLowerCase() === "src");
         if (isExternal) return; // <script src=...> has no inline body to collide
 
-        // (0) An inline <script> inside a FRAGMENT is rejected by the PalBuilder server
-        // ("Tag script is not allowed" — confirmed live: a parseable:false fragment with an
-        // inline <script> failed the save). Move the JS to an external file in scripts/ and load
-        // it from the page, or reference it; do not inline it in a fragment. WARN (not error):
-        // one confirmed case, and the push now surfaces the server's rejection if it slips through.
+        // (0) An inline <script> inside a FRAGMENT is HARD-REJECTED by the PalBuilder server
+        // ("Tag script is not allowed"). This is an ERROR, not a warning: it fails the save
+        // outright (confirmed live AND in two independent cold tests — both a Sonnet and a Haiku
+        // agent wrote an inline <script> in a fragment; the server rejected the whole push). As a
+        // blocking error the pre-push gate stops it here, with the fix, BEFORE the failed push —
+        // instead of letting it through to a server rejection the agent then has to diagnose.
         if (isFragment && body.trim().length) {
-            add(offset, "warn", "scriptInFragment",
-                "This fragment contains an inline <script>. PalBuilder rejects a <script> tag inside a fragment at save time " +
-                "(\"Tag script is not allowed\"). Fix: move this JavaScript into an external file under scripts/ (e.g. scripts/your-module.js) " +
-                "and load it from the PAGE that includes this fragment; reference its functions from the fragment via onclick. " +
+            add(offset, "error", "scriptInFragment",
+                "This fragment contains an inline <script>. PalBuilder REJECTS a <script> tag inside a fragment at save time " +
+                "(\"Tag script is not allowed\") — the push will fail. Fix: move this JavaScript into an external file under scripts/ " +
+                "(e.g. scripts/your-module.js), add a scripts.entry for it in pal.json, and load it from the PAGE that includes this " +
+                "fragment with <script src=\"../Scripts/your-module.js\"></script>; call its functions from the fragment via onclick. " +
                 "See the palbuilder-frontend skill (fragment JavaScript goes in external scripts).");
         }
 
