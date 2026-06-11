@@ -25,6 +25,7 @@ async function run({
     onDrift = driftPrompt,
     autoLaunch = true,
     withDesign = false,
+    withSeo = false,
     agent: agentKey,
     log = () => {}
 } = {}) {
@@ -52,7 +53,7 @@ async function run({
     // 5. workspace dir + setup (pull + lock + inject + .palsync.json + register MCP)
     const dir = await chooseWorkspaceDir(workspace.defaultWorkspaceDir(sel.pal.name), sel.pal);
     if (!dir) { log("cancelled at workspace dir"); return null; }
-    const setupResult = await workspace.setup({ session, cloudUrl, sel, workspaceDir: dir, withDesign, agent: agent.key, onDrift, log });
+    const setupResult = await workspace.setup({ session, cloudUrl, sel, workspaceDir: dir, withDesign, withSeo, agent: agent.key, onDrift, log });
 
     // 6. open the agent in the workspace (handoff). Lock stays held; MCP server owns release.
     let child = null;

@@ -33,6 +33,7 @@ const USAGE = [
     "                                                               Server-validate a workflow + open a live preview",
     "  palsync preview [--workflow console|web|transaction] [--keep-lock] [--dir <ws>]",
     "                                                               Render the pal (web: prints the HTML; console: opens a browser)",
+    "  palsync seo-audit [--keep-lock] [--dir <ws>]             On-page SEO audit of a WEB pal's rendered page",
     "  palsync sync-datasets [--datasets a,b] [--recreate] [--keep-lock] [--dir <ws>]",
     "                                                               Provision dataset tables from pal.json (safe by default)",
     "",
@@ -153,6 +154,15 @@ async function run(cmd, argv) {
             try { await lock.releaseByGuid(ctx.session, ctx.record.palGuid); } catch (e) { /* own next session reclaims */ }
         }
         return res.previewed ? 0 : 1;
+    }
+
+    if (cmd === "seo-audit") {
+        const res = await toolByName("pal_seo_audit").run(ctx, {});
+        console.log(res.message);
+        if (!flags.keepLock && ctx.session.lockInfo) {
+            try { await lock.releaseByGuid(ctx.session, ctx.record.palGuid); } catch (e) { /* own next session reclaims */ }
+        }
+        return res.audited && res.errors === 0 ? 0 : 1;
     }
 
     if (cmd === "test") {

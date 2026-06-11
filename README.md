@@ -72,6 +72,7 @@ Now talk to Claude. Ask for a change, then say *"push it."*
 |------|-------|--------------|
 | `--version` | `-v` | Print the palsync build version and exit. |
 | `--with-design` | `-d` | Inject the **Nimblewire design system** (`design-core`) into the workspace for UI work. |
+| `--with-seo` | | Inject the **SEO skill** (`seo-core`) for WEB pals — the page-head recipe, the absolute-og-URL and non-ASCII-attribute traps, JSON-LD, and the `pal_seo_audit` verify loop. |
 | `--agent <name>` | | Choose the coding agent: `claude` (default) or `codex`. |
 
 ## Headless subcommands (no MCP server, no agent)
@@ -86,6 +87,7 @@ palsync push     # validate, then push; releases the lock after (--keep-lock to 
 palsync pull     # sync from the server (refuses to overwrite un-pushed edits; --force overrides)
 palsync status   # server drift + un-pushed local changes (per file) + lock holder
 palsync test     # server-side workflow validation + live preview in your browser
+palsync seo-audit # on-page SEO audit of a WEB pal's rendered page
 palsync preview  # render the pal (web: prints the HTML; console: opens a browser)
 palsync sync-datasets  # provision dataset tables from pal.json (safe by default)
 ```
@@ -149,6 +151,7 @@ registration + launch commands rather than failing.
 | `pal_pull` | Sync the pal from the server. Preserves new un-pushed local files; refuses (naming files) if it would overwrite un-pushed edits. |
 | `pal_test` | Run the server's own workflow validation and open a **live preview** in your browser (the agent never sees the credential-bearing URL). |
 | `pal_preview` | **Render the pal and return it to the agent.** For a **web** pal, fetches the server-rendered HTML so Claude can read its own output; for a **console** pal, opens it in your browser (the agent can't see it). |
+| `pal_seo_audit` | **On-page SEO audit of a web pal's rendered page** — title/description lengths, canonical, the 5 `og:` tags with absolute `og:image`/`og:url`, twitter:card, one H1, viewport, JSON-LD, img alt, non-ASCII attribute values. Every finding carries the exact fix; passing checks are listed too. |
 | `pal_sync_datasets` | **Create/update dataset tables** from `pal.json` definitions. Safe by default (never deletes data); the destructive `recreate` path requires an exact typed confirmation. |
 | `pal_status` | Is the server newer than your last pull? Any un-pushed local changes? Who holds the lock? |
 | `pal_lock` | Acquire the lock (auto-reclaims your own stale lock). |

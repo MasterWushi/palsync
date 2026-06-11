@@ -1,0 +1,156 @@
+"use strict";
+// pal_seo_audit core: fetch the LAST-PUSHED render of a WEB pal (reuses pal_preview's plumbing)
+// and run deterministic on-page SEO checks against the actual HTML the server serves.
+//
+// Why these checks: the first real palsync build (OBE homepage, June 2026) shipped two SEO
+// defects a render-audit would have caught — a RELATIVE og:image (social scrapers can't resolve
+// it) and raw non-ASCII in meta content attributes (server validation note). This tool makes
+// that class of mistake impossible to miss. Checks run on the RENDERED output, so they verify
+// what crawlers actually see — not what the source intends.
+//
+// auditHtml(html, {url}) is pure (offline-testable). Severity:
+//   "error" = will materially hurt search/social handling of the page
+//   "warn"  = best-practice gap; review it
+// Every finding is a full sentence with the fix — built for the least capable agent.
+const { runPreview } = require("./preview");
+
+function collectMetas(html) {
+    const metas = [];
+    const re = /<meta\b[^>]*>/gi;
+    let m;
+    while ((m = re.exec(html))) {
+        const tag = m[0];
+        const name = (tag.match(/\bname=["']([^"']*)["']/i) || [])[1];
+        const property = (tag.match(/\bproperty=["']([^"']*)["']/i) || [])[1];
+        const content = (tag.match(/\bcontent=["']([^"']*)["']/i) || [])[1];
+        metas.push({ key: (property || name || "").toLowerCase(), content: content !== undefined ? content : null });
+    }
+    return metas;
+}
+
+function metaContent(metas, key) {
+    const hit = metas.find(x => x.key === key.toLowerCase() && x.content != null);
+    return hit ? hit.content : null;
+}
+
+const ABSOLUTE = /^https?:\/\//i;
+
+// Pure audit of rendered HTML. Returns { findings, passed, errors, warnings }.
+function auditHtml(html, { url = "" } = {}) {
+    const findings = [];
+    const passed = [];
+    const add = (severity, rule, message) => findings.push({ severity, rule, message });
+    const ok = (rule, message) => passed.push({ rule, message });
+
+    const metas = collectMetas(html);
+
+    // ---- title ----
+    const title = (html.match(/<title>([\s\S]*?)<\/title>/i) || [])[1];
+    const titleText = title ? title.replace(/&#?\w+;/g, "x").trim() : null; // entities count as 1 char-ish
+    if (!title || !title.trim()) {
+        add("error", "title", "The page has NO <title>. Search results show the title; without one the page is effectively unlisted. Fix: add <title>Primary Keyword — Brand</title> in <head>.");
+    } else {
+        const len = title.trim().length;
+        if (len > 60) add("warn", "titleLength", "The <title> is " + len + " characters — Google truncates around 60. Fix: shorten it; lead with the primary keyword (\"" + title.trim().slice(0, 50) + "…\").");
+        else if (len < 15) add("warn", "titleLength", "The <title> is only " + len + " characters — too thin to describe the page. Fix: write 15–60 characters, primary keyword first.");
+        else ok("title", "<title> present, " + len + " chars");
+    }
+
+    // ---- meta description ----
+    const desc = metaContent(metas, "description");
+    if (!desc) {
+        add("error", "metaDescription", "There is NO meta description. Google writes its own snippet without one, usually worse. Fix: add <meta name=\"description\" content=\"…\" /> in <head>, 50–160 characters, stating the offer plainly.");
+    } else {
+        const len = desc.length;
+        if (len > 160) add("warn", "descriptionLength", "The meta description is " + len + " characters — truncated around 160 in results. Fix: tighten it to 50–160.");
+        else if (len < 50) add("warn", "descriptionLength", "The meta description is only " + len + " characters — too thin. Fix: 50–160 characters stating what the page offers and for whom.");
+        else ok("metaDescription", "meta description present, " + len + " chars");
+    }
+
+    // ---- canonical ----
+    const canonical = (html.match(/<link\b[^>]*rel=["']canonical["'][^>]*>/i) || [])[0];
+    const canonicalHref = canonical ? (canonical.match(/href=["']([^"']*)["']/i) || [])[1] : null;
+    if (!canonicalHref) {
+        add("warn", "canonical", "No canonical link. Without it, URL variants (tracking params, http/https) can split ranking signals. Fix: add <link rel=\"canonical\" href=\"https://…absolute page URL…\" /> in <head>.");
+    } else if (!ABSOLUTE.test(canonicalHref)) {
+        add("error", "canonicalRelative", "The canonical URL is RELATIVE (\"" + canonicalHref + "\"). Canonicals must be absolute. Fix: use the full https:// URL of this page.");
+    } else ok("canonical", "canonical present and absolute");
+
+    // ---- Open Graph + twitter ----
+    const OG_REQUIRED = ["og:title", "og:description", "og:image", "og:url", "og:type"];
+    const missingOg = OG_REQUIRED.filter(k => !metaContent(metas, k));
+    if (missingOg.length) {
+        add("warn", "ogMissing", "Missing Open Graph tag(s): " + missingOg.join(", ") + ". Links shared on social/chat render without a proper card. Fix: add each as <meta property=\"og:…\" content=\"…\" /> in <head>.");
+    } else ok("openGraph", "all 5 core og: tags present");
+    for (const k of ["og:image", "og:url"]) {
+        const v = metaContent(metas, k);
+        if (v && !ABSOLUTE.test(v)) {
+            add("error", "ogRelative", k + " is RELATIVE (\"" + v + "\"). Social scrapers fetch these from THEIR servers — a relative URL cannot resolve and the card shows no image/link. Fix: use the full absolute URL (e.g. https://webpals.cloudpiston.com/nx-ref/Images/…).");
+        }
+    }
+    if (!metaContent(metas, "twitter:card")) {
+        add("warn", "twitterCard", "No twitter:card meta. X/Twitter shares render as bare links. Fix: add <meta name=\"twitter:card\" content=\"summary_large_image\" />.");
+    } else ok("twitterCard", "twitter:card present");
+
+    // ---- non-ASCII in meta content attributes (the live server-note trap) ----
+    const nonAscii = metas.filter(x => x.content && /[^\x00-\x7F]/.test(x.content));
+    if (nonAscii.length) {
+        add("warn", "nonAsciiMeta", "Non-ASCII character(s) (e.g. an em-dash —) inside meta content attribute(s): " +
+            nonAscii.map(x => x.key).filter(Boolean).slice(0, 5).join(", ") +
+            ". The PalBuilder server flags this (\"non ASCII attribute\") on every save. Fix: entity-encode in attribute values — write &#8212; instead of a literal em-dash. (Body TEXT is fine; only attribute values need this.)");
+    }
+
+    // ---- H1 ----
+    const h1s = html.match(/<h1[\s>]/gi) || [];
+    if (h1s.length === 0) add("error", "h1", "The page has NO <h1>. The H1 is the page's one headline for crawlers and readers. Fix: exactly one <h1> stating the page's primary topic.");
+    else if (h1s.length > 1) add("warn", "h1", "The page has " + h1s.length + " <h1> elements — there should be exactly ONE. Fix: keep the main headline as <h1>; demote the others to <h2>.");
+    else ok("h1", "exactly one <h1>");
+
+    // ---- viewport ----
+    if (!metas.some(x => x.key === "viewport")) {
+        add("error", "viewport", "No viewport meta — the page is not mobile-friendly in Google's eyes (mobile-first indexing). Fix: add <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /> in <head>.");
+    } else ok("viewport", "viewport meta present");
+
+    // ---- structured data ----
+    if (!/<script[^>]*type=["']application\/ld\+json["']/i.test(html)) {
+        add("warn", "structuredData", "No JSON-LD structured data. Schema markup earns rich results and helps AI/answer engines cite you. Fix: add a <script type=\"application/ld+json\"> block in the PAGE <head> (allowed there — only fragments reject <script>) with Organization or WebSite schema. The seo-core skill has a copy-paste recipe.");
+    } else ok("structuredData", "JSON-LD present");
+
+    // ---- img alt ----
+    const imgs = html.match(/<img\b[^>]*>/gi) || [];
+    const noAlt = imgs.filter(t => !/\balt=/i.test(t));
+    if (noAlt.length) {
+        const srcs = noAlt.map(t => (t.match(/src=["']([^"']*)["']/i) || [])[1] || "(no src)").slice(0, 5);
+        add("warn", "imgAlt", noAlt.length + " <img> tag(s) have no alt attribute (" + srcs.join(", ") + (noAlt.length > 5 ? ", …" : "") + "). Images without alt are invisible to image search and screen readers. Fix: add alt=\"describe the image\" (or alt=\"\" if purely decorative).");
+    } else if (imgs.length) ok("imgAlt", "all " + imgs.length + " <img> tags have alt");
+
+    const errors = findings.filter(f => f.severity === "error").length;
+    const warnings = findings.filter(f => f.severity === "warn").length;
+    return { findings, passed, errors, warnings, url };
+}
+
+// Format for an agent: verdict first, then every finding spelled out, then what passed
+// (positive confirmation so a literal-minded agent knows those areas are done).
+function formatSeoAudit(result) {
+    const { findings, passed, errors, warnings, url } = result;
+    const head = (errors > 0 ? "SEO AUDIT FAILED" : warnings > 0 ? "SEO AUDIT PASSED WITH WARNINGS" : "SEO AUDIT PASSED")
+        + " — " + errors + " error(s), " + warnings + " warning(s)" + (url ? " for " + url : "") + ".";
+    const lines = [head];
+    if (errors > 0) lines.push("ERROR = materially hurts how search engines/social scrapers handle this page; fix every error.");
+    for (const f of findings) lines.push("   " + (f.severity === "error" ? "ERROR" : "WARNING") + " — " + f.message);
+    if (passed.length) lines.push("Passed: " + passed.map(p => p.message).join(" · "));
+    return lines.join("\n");
+}
+
+// Fetch the rendered page via the preview plumbing and audit it. Web pals only.
+async function runSeoAudit(session, guid, record, workspaceDir) {
+    const p = await runPreview(session, guid, record, workspaceDir, { workflow: "web" });
+    if (!p.previewed) return { audited: false, reason: p.reason, validation: p.validation };
+    if (!p.agentVisible) {
+        return { audited: false, reason: "SEO audit works on WEB pals (their render is publicly fetchable). This is a " + p.kind + " pal — console pages aren't crawled by search engines, so an SEO audit doesn't apply." };
+    }
+    const result = auditHtml(p.html, { url: p.url });
+    return Object.assign({ audited: true, dirty: p.dirty, dirtyFiles: p.dirtyFiles }, result);
+}
+
+module.exports = { auditHtml, formatSeoAudit, runSeoAudit, collectMetas };

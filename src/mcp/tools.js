@@ -7,6 +7,7 @@ const { pull } = require("../core/pull");
 const { push } = require("../core/push");
 const { runTest } = require("../core/test");
 const { runPreview } = require("../core/preview");
+const { runSeoAudit, formatSeoAudit } = require("../core/seoAudit");
 const { syncDatasets } = require("../core/datasets");
 const { validateWorkspace, formatValidation: formatLint } = require("../core/validate");
 const { openUrl } = require("../platform/openUrl");
@@ -198,6 +199,28 @@ const TOOLS = [
                 message: (opened.opened ? "Opened the preview in the user's browser. " : "Could not open a browser automatically (" + opened.reason + "). ") +
                     res.reason + dirtyNote
             });
+        }
+    },
+    {
+        name: "pal_seo_audit",
+        description: "Run an on-page SEO audit of a WEB pal's actual server-rendered page (the version last pushed). " +
+            "Checks: title + meta description (presence/length), canonical, the 5 core og: tags with ABSOLUTE og:image/og:url, twitter:card, " +
+            "exactly one H1, viewport meta, JSON-LD structured data, img alt text, and non-ASCII characters in meta attributes (a PalBuilder server flag). " +
+            "Returns every problem as a full sentence with the exact fix, plus the list of checks that PASSED. " +
+            "Use after pushing a web page, and fix every ERROR it reports. Does not apply to console pals (they're behind login — not crawled). " +
+            "Read the seo-core skill (.claude/skills/seo-core/) BEFORE writing web-page heads; this tool verifies the result.",
+        inputShape: {},
+        async run(ctx) {
+            const res = await runSeoAudit(ctx.session, ctx.record.palGuid, ctx.record, ctx.workspaceDir);
+            if (ctx.lifecycle) ctx.lifecycle.onActivity(); // audit takes the lock via preview — re-arm idle
+            if (!res.audited) {
+                return Object.assign(res, { message: "SEO audit could not run: " + res.reason +
+                    (res.validation && res.validation.length ? "\n" + formatValidation(res.validation) : "") });
+            }
+            const dirtyNote = res.dirty
+                ? "\n⚠ You have un-pushed local changes (" + (res.dirtyFiles || []).join(", ") + "). This audit reflects the LAST PUSHED version — pal_push, then audit again to check your latest edits."
+                : "";
+            return Object.assign(res, { message: formatSeoAudit(res) + dirtyNote });
         }
     },
     {

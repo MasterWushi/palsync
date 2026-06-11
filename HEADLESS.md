@@ -82,8 +82,8 @@ env:     PALSYNC_WORKSPACE=/home/you/pals/isr
          CP_PASS=your-password
 ```
 
-It exposes: `pal_status`, `pal_validate`, `pal_test`, `pal_preview`, `pal_sync_datasets`,
-`pal_pull`, `pal_push`, `pal_lock`, `pal_unlock` (9 tools — a modest context cost; keep other
+It exposes: `pal_status`, `pal_validate`, `pal_test`, `pal_preview`, `pal_seo_audit`,
+`pal_sync_datasets`, `pal_pull`, `pal_push`, `pal_lock`, `pal_unlock` (10 tools — a modest context cost; keep other
 heavy MCP servers off the same session if context is tight).
 
 **OpenCode** — `~/.config/opencode/opencode.json` (or project `opencode.json`):
@@ -131,6 +131,7 @@ palsync pull     --dir ~/pals/isr
 palsync push     --dir ~/pals/isr            # validates first; refuses on new errors
 palsync test     --dir ~/pals/isr
 palsync preview  --dir ~/pals/isr
+palsync seo-audit --dir ~/pals/isr
 palsync sync-datasets --dir ~/pals/isr
 ```
 

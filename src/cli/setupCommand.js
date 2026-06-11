@@ -35,6 +35,7 @@ const USAGE = [
     "  --profile <name>     narrow by profile name (disambiguates a duplicate pal name)",
     "  --group <name>       narrow by group name",
     "  --with-design        inject the design system skills",
+    "  --with-seo           inject the SEO skill (for WEB pals — public, crawled pages)",
     "  --agent claude|codex which agent's MCP registration to write (default: claude)",
     "  --overwrite-local    if the workspace has un-pushed local edits, overwrite them (default: refuse)",
     "  --json               machine-readable result",
@@ -45,13 +46,14 @@ const USAGE = [
 
 function parse(argv) {
     const f = { pal: undefined, guid: undefined, dir: undefined, cloud: undefined, user: undefined,
-                profile: undefined, group: undefined, withDesign: false, agent: "claude",
+                profile: undefined, group: undefined, withDesign: false, withSeo: false, agent: "claude",
                 overwriteLocal: false, json: false, help: false };
     const need = (i, name) => { const v = argv[i + 1]; if (v === undefined) throw new Error(name + " requires a value"); return v; };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === "--help" || a === "-h") f.help = true;
         else if (a === "--with-design" || a === "-d") f.withDesign = true;
+        else if (a === "--with-seo") f.withSeo = true;
         else if (a === "--overwrite-local") f.overwriteLocal = true;
         else if (a === "--json") f.json = true;
         else if (a === "--pal") { f.pal = need(i, "--pal"); i++; }
@@ -124,7 +126,7 @@ async function run(argv) {
     const sel = { profile: { profileId: resolved.profileId }, group: { groupId: resolved.groupId },
                   pal: { guid: resolved.guid, name: resolved.name, lastModifiedDate: resolved.lastModifiedDate } };
 
-    const result = await workspace.setup({ session, cloudUrl, sel, workspaceDir, withDesign: flags.withDesign, agent: flags.agent, onDrift, log });
+    const result = await workspace.setup({ session, cloudUrl, sel, workspaceDir, withDesign: flags.withDesign, withSeo: flags.withSeo, agent: flags.agent, onDrift, log });
 
     // Release the lock — no agent is launched here, so don't strand it. The MCP server re-acquires
     // it on the agent's first tool call (own-stale-reclaim).

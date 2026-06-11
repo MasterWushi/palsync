@@ -19,7 +19,7 @@ if (argv.includes("--version") || argv.includes("-v")) {
 // Subcommands: `palsync push|pull|status` — headless sync that needs NO MCP server and NO agent
 // (the recovery path when a session ends before a push, and a plain terminal workflow). They
 // skip the launcher preflight entirely: no Claude/Codex required, just .palsync.json + keychain.
-const SUBCOMMANDS = ["push", "pull", "status", "test", "preview", "validate", "sync-datasets"];
+const SUBCOMMANDS = ["push", "pull", "status", "test", "preview", "validate", "sync-datasets", "seo-audit"];
 if (SUBCOMMANDS.includes(argv[0])) {
     require("../src/cli/syncCommands").run(argv[0], argv.slice(1))
         .then(code => process.exit(code))
@@ -60,6 +60,10 @@ if (argv[0] === "help" || argv.includes("--help") || argv.includes("-h")) {
 // Default OFF so backend/bugfix sessions stay lean. Parsed here, threaded through run() → setup().
 const withDesign = argv.includes("--with-design") || argv.includes("-d");
 
+// --with-seo: opt in to injecting the SEO skill (seo-core) for WEB pal work (public, crawled
+// pages). Pairs with --with-design when building a marketing site.
+const withSeo = argv.includes("--with-seo");
+
 // --agent <claude|codex>: choose the coding agent. Default Claude Code (and, when the flag is
 // absent, the interactive picker still runs — agentFlag stays undefined). Threaded through
 // preflight (which agent's binary to check) and run() → setup() (injection + MCP destinations).
@@ -82,7 +86,7 @@ const agentFlag = parseAgentFlag(argv);
     await preflight.run({ agent: agentFlag || "claude" }); // Node >= 18 + the chosen agent's CLI
     const clack = await loadClack(); // @clack/prompts is ESM-only; dynamic import works on Node 18+
     clack.intro("palsync — PalBuilder + Claude Code");
-    const result = await run({ withDesign, agent: agentFlag, log: (m) => clack.log.step(m) });
+    const result = await run({ withDesign, withSeo, agent: agentFlag, log: (m) => clack.log.step(m) });
     if (!result) { clack.cancel("Cancelled."); process.exit(1); }
     clack.log.info(
         "Creatable here: pages, fragments, scripts, emails, images, styles, attachments.\n" +
