@@ -24,7 +24,8 @@ a warning.
     scripts/                    # client-side JS
     styles/                     # CSS
     images/  emails/  attachments/  documents/
-    datasets/  dataviews/  data/  datalists/    # JSON passthrough (managed in PalBuilder)
+    datasets/   # schema JSON — create/update tables via pal_sync_datasets
+    dataviews/  data/  datalists/    # JSON passthrough (managed in PalBuilder)
     .palsync.json               # palsync sync state (lock holder, drift marker, etc.)
     .claude/skills/             # palsync-injected skills (palbuilder-frontend/backend, …)
     CLAUDE.md  CLAUDE.palsync.md

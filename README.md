@@ -139,6 +139,7 @@ registration + launch commands rather than failing.
 | `pal_push` | **Validates first** (refuses on errors unless `skipValidation`), then pushes. Refuses if the server advanced since your last pull (drift) unless forced. |
 | `pal_pull` | Sync the pal from the server. Preserves new un-pushed local files; refuses (naming files) if it would overwrite un-pushed edits. |
 | `pal_test` | Run the server's own workflow validation and open a **live preview** in your browser (the agent never sees the credential-bearing URL). |
+| `pal_sync_datasets` | **Create/update dataset tables** from `pal.json` definitions. Safe by default (never deletes data); the destructive `recreate` path requires an exact typed confirmation. |
 | `pal_status` | Is the server newer than your last pull? Any un-pushed local changes? Who holds the lock? |
 | `pal_lock` | Acquire the lock (auto-reclaims your own stale lock). |
 | `pal_unlock` | Release the lock (never breaks another user's). |
@@ -173,10 +174,14 @@ them via push, and the rejection fails the whole push). **Once they exist, palsy
 | Workflows | unknown workflows are rejected (fixed workflow slots) |
 | Documents | require a description and valid XML content; a plain file is rejected |
 | Fonts | font creation is rejected |
-| Datasets, dataviews, data, datalists | provisioned in PalBuilder; palsync preserves them on pull/push but never creates, recreates, or deletes them |
+| Dataviews, data, datalists | provisioned in PalBuilder; palsync preserves them on pull/push but never creates or deletes them |
 
 If Claude is asked to create one of the PalBuilder-only types, it will tell you to make it in PalBuilder first.
 A safety guard in push also excludes any stray new file of an uncreatable type so it can't sink a push.
+
+**Datasets are the exception — palsync CAN create and update them** via `pal_sync_datasets`: define the
+schema in `datasets/<name>.json` + a `pal.json` entry, then sync to provision the table. A normal sync
+never deletes data; the destructive `recreate` (drop + rebuild) requires an exact typed confirmation.
 
 ## Notes
 

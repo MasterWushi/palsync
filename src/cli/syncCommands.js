@@ -9,9 +9,19 @@
 // default, since there is no session to keep holding it; --keep-lock leaves it held (e.g. when
 // you're about to relaunch palsync and want to stay the holder).
 const path = require("path");
+const readline = require("readline");
 const { buildContext } = require("../mcp/context");
 const { TOOLS } = require("../mcp/tools");
+const { readDatasetDefs, recreatePhrase } = require("../core/datasets");
 const lock = require("../core/lock");
+
+// Read one line from the user (for the recreate typed-YES). Resolves to the trimmed input.
+function askLine(question) {
+    return new Promise((resolve) => {
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        rl.question(question, (ans) => { rl.close(); resolve(String(ans)); });
+    });
+}
 
 const USAGE = [
     "Usage:",
@@ -21,12 +31,16 @@ const USAGE = [
     "  palsync status [--dir <workspace>]                           Server drift, local changes, lock holder",
     "  palsync test   [--workflow console|web|transaction] [--no-preview] [--keep-lock] [--dir <ws>]",
     "                                                               Server-validate a workflow + open a live preview",
+    "  palsync sync-datasets [--datasets a,b] [--recreate] [--keep-lock] [--dir <ws>]",
+    "                                                               Provision dataset tables from pal.json (safe by default)",
     "",
     "  --force            push: override the server-drift refusal · pull: overwrite locally-modified files",
     "  --skip-validation  push: push even if the offline code check finds errors (not recommended)",
-    "  --keep-lock        push/test: keep holding the pal lock afterwards (default releases it)",
+    "  --keep-lock        push/test/sync-datasets: keep holding the pal lock afterwards (default releases it)",
     "  --workflow         test: which engine to test (default: auto-detected from the pal)",
     "  --no-preview       test: validate only, don't open the browser preview",
+    "  --datasets         sync-datasets: comma-separated dataset names (default: all defined in pal.json)",
+    "  --recreate         sync-datasets: DROP + REBUILD tables (DELETES ALL DATA) — asks for a typed YES",
     "  --dir <ws>         workspace directory (default: current directory)",
     "",
     "validate needs only the local files (no .palsync.json, no login). The other commands need a",
@@ -34,16 +48,19 @@ const USAGE = [
 ].join("\n");
 
 function parseFlags(argv) {
-    const flags = { force: false, keepLock: false, dir: undefined, help: false, workflow: undefined, preview: true, skipValidation: false };
+    const flags = { force: false, keepLock: false, dir: undefined, help: false, workflow: undefined, preview: true, skipValidation: false, datasets: undefined, recreate: false };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === "--force" || a === "-f") flags.force = true;
         else if (a === "--keep-lock") flags.keepLock = true;
         else if (a === "--no-preview") flags.preview = false;
         else if (a === "--skip-validation") flags.skipValidation = true;
+        else if (a === "--recreate") flags.recreate = true;
         else if (a === "--help" || a === "-h") flags.help = true;
         else if (a === "--workflow") { flags.workflow = argv[++i]; if (!flags.workflow) throw new Error("--workflow requires a value"); }
         else if (a.startsWith("--workflow=")) flags.workflow = a.slice("--workflow=".length);
+        else if (a === "--datasets") { flags.datasets = argv[++i]; if (!flags.datasets) throw new Error("--datasets requires a value"); }
+        else if (a.startsWith("--datasets=")) flags.datasets = a.slice("--datasets=".length);
         else if (a === "--dir") { flags.dir = argv[++i]; if (!flags.dir) throw new Error("--dir requires a value"); }
         else if (a.startsWith("--dir=")) flags.dir = a.slice("--dir=".length);
         else throw new Error("Unknown flag for this subcommand: " + a + "\n\n" + USAGE);
@@ -98,6 +115,33 @@ async function run(cmd, argv) {
         const res = await toolByName("pal_pull").run(ctx, { force: flags.force });
         console.log(res.message);
         return res.pulled ? 0 : 1;
+    }
+
+    if (cmd === "sync-datasets") {
+        const names = flags.datasets ? flags.datasets.split(",").map(s => s.trim()).filter(Boolean) : undefined;
+        let confirmRecreate;
+        if (flags.recreate) {
+            // Resolve the exact targets so the typed-YES phrase matches what the tool expects.
+            const defs = readDatasetDefs(dir);
+            const targets = (names && names.length) ? names : [...defs.keys()];
+            const phrase = recreatePhrase(targets);
+            console.log("⚠ RECREATE will DROP and REBUILD these tables, DELETING ALL THEIR DATA:");
+            for (const t of targets) console.log("   - " + t);
+            console.log("\nThis cannot be undone. To proceed, type the following line EXACTLY (or anything else to cancel):");
+            console.log("  " + phrase + "\n");
+            const typed = await askLine("> ");
+            if (typed.trim() !== phrase) {
+                console.log("\nCancelled — no tables were recreated, no data deleted.");
+                return 1;
+            }
+            confirmRecreate = phrase;
+        }
+        const res = await toolByName("pal_sync_datasets").run(ctx, { datasets: names, recreate: flags.recreate, confirmRecreate, force: flags.force });
+        console.log(res.message);
+        if (!flags.keepLock && ctx.session.lockInfo) {
+            try { await lock.releaseByGuid(ctx.session, ctx.record.palGuid); } catch (e) { /* own next session reclaims */ }
+        }
+        return res.synced ? 0 : 1;
     }
 
     if (cmd === "test") {

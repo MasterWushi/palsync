@@ -6,6 +6,7 @@ const { z } = require("zod");
 const { pull } = require("../core/pull");
 const { push } = require("../core/push");
 const { runTest } = require("../core/test");
+const { syncDatasets } = require("../core/datasets");
 const { validateWorkspace, formatValidation: formatLint } = require("../core/validate");
 const { openUrl } = require("../platform/openUrl");
 const lock = require("../core/lock");
@@ -145,6 +146,51 @@ const TOOLS = [
             // Strip the credential URL before returning — defense in depth.
             const safe = Object.assign({}, res); delete safe._previewUrl;
             return Object.assign(safe, { message });
+        }
+    },
+    {
+        name: "pal_sync_datasets",
+        description: "Create or update dataset TABLES on the server from the dataset definitions in pal.json. " +
+            "A dataset has two parts: its DEFINITION (the schema in datasets/<name>.json + a pal.json entry, saved by a normal push) and its TABLE (the real storage). " +
+            "Editing the .json only changes the definition; this tool provisions the actual table. It saves the pal first, then provisions. " +
+            "By default it does a SAFE sync (creates the table if missing, applies additive changes — never deletes data). " +
+            "Set recreate:true ONLY to DROP AND REBUILD a table, which DELETES ALL ITS ROWS — and that requires a separate exact typed confirmation, so it cannot happen by accident. " +
+            "To create a NEW dataset: write datasets/<name>.json with the schema, add a matching datasets.entry to pal.json, then call this tool.",
+        inputShape: {
+            datasets: z.array(z.string()).optional(),
+            recreate: z.boolean().optional(),
+            confirmRecreate: z.string().optional(),
+            force: z.boolean().optional()
+        },
+        async run(ctx, { datasets, recreate = false, confirmRecreate, force = false } = {}) {
+            const res = await syncDatasets(ctx.session, ctx.record, ctx.workspaceDir, { datasets, recreate, confirmRecreate, force });
+            if (ctx.lifecycle) ctx.lifecycle.onActivity(); // sync saves + locks — re-arm the idle timer
+            if (res.synced) {
+                // The push inside sync advanced the baseline — persist it.
+                if (res.saveResult && res.saveResult.serverPaths) refreshBaseline(ctx.record, ctx.workspaceDir, res.saveResult.serverPaths);
+                await ctx.persist();
+                const verb = res.recreated ? "RECREATED (dropped + rebuilt, data deleted)" : "synced (created/updated, data kept)";
+                return Object.assign(res, {
+                    message: "Datasets " + verb + " on the server — " + res.targets.length + " table(s):\n" +
+                        res.schemas.map(s => "   - " + s).join("\n") +
+                        "\nThe tables now match these schemas. (A dataset table exists only after this step — editing the .json alone never creates it.)"
+                });
+            }
+            if (res.refused === "recreate-unconfirmed") {
+                return Object.assign(res, { message: "REFUSED (recreate not confirmed): " + res.reason });
+            }
+            if (res.refused === "save-failed") {
+                // Bubble up the underlying push refusal text so the agent knows exactly what to fix.
+                const sr = res.saveResult || {};
+                let detail = sr.refused || "unknown";
+                if (sr.refused === "validation" && sr.lint) detail = "code errors — run pal_validate:\n" + formatLint(sr.lint, { context: "pre-push" });
+                else if (sr.refused === "drift") detail = "the server changed since your last pull — run pal_pull first (or force:true).";
+                return Object.assign(res, { message: "REFUSED: could not save the dataset definitions before provisioning (" + (sr.refused || "unknown") + ").\n" + detail });
+            }
+            if (res.refused === "no-datasets" || res.refused === "unknown-dataset") {
+                return Object.assign(res, { message: "REFUSED: " + res.reason });
+            }
+            return Object.assign(res, { message: "Dataset sync did not complete: " + (res.reason || res.refused || "unknown") });
         }
     },
     {
