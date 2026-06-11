@@ -398,8 +398,14 @@ Wraps content without emitting any HTML element. Holds the namespace declaration
   slot (`<c:fragment name="${frag}"/>`); navigation swaps it via `c:a`.
 - Modal content loads into the platform modal shell (`cloudpiston/ui/modalShell`), included once in the
   page shell.
-- When loaded via AJAX, `DOMContentLoaded` does **not** fire — run init JS directly at the bottom of the
-  fragment, never inside a `DOMContentLoaded` wrapper. (Full-page reloads are the exception.)
+- **NEVER put an inline `<script>` inside a fragment.** The PalBuilder server REJECTS it at save time
+  with **"Tag script is not allowed"**, and the rejection fails the whole push. A fragment's JavaScript
+  belongs in an **external file under `scripts/`**, loaded once from the PAGE that hosts the fragment
+  (`<script src="../Scripts/your-module.js">`); the fragment then calls those functions from `onclick`.
+  This is the single most common fragment mistake — fragments are markup only, JS lives in `scripts/`.
+- When a fragment's external JS runs after an AJAX load, `DOMContentLoaded` does **not** fire — run init
+  code directly (or call an init function from the page), never inside a `DOMContentLoaded` wrapper.
+  (Full-page reloads are the exception.)
 
 ---
 
@@ -493,6 +499,7 @@ browser; `fetch`/ClientPal expose everything in devtools.
 | `<c:upload name="x" accept="image/*" />` | `<c:upload action="x" allow="image" />` |
 | `<img src="x.png">` | `<img src="x.png" />` |
 | `DOMContentLoaded` in an AJAX-loaded fragment | Run JS directly, no wrapper |
+| Inline `<script>` inside a fragment (server: "Tag script is not allowed") | Put the JS in an external `scripts/*.js`, loaded from the page |
 | Hardcoding a CDN `<script>` for Bootstrap/jQuery/Chart.js | `c:resource source=... version=... name=...` |
 | CDATA-wrapping `<script>`/`<style>` (`<![CDATA[ … ]]>`) | Write raw — CDATA gets mangled and corrupts the content |
 | Entity-escaping `<` `>` `&` inside `<script>`/`<style>` | Write raw — escapes are stored literally and break JS |

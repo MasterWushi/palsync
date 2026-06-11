@@ -158,7 +158,11 @@ async function push(session, record, workspaceDir, { force = false, overrideLock
     // strays already stripped by the guard above). Callers rebuild fileHashes from this.
     // lint carries any pre-push WARNINGS (errors would have blocked above) so the agent sees them
     // even on a clean push; skippedValidation flags an error-bypassing forced push.
-    return { pushed: success, forced: !!force, filesPushed: injected.length, validation,
+    // On a SERVER-REJECTED save (success=false), mark refused:"save-rejected" and carry the
+    // server's validation notes so callers can show WHY (e.g. "Tag script is not allowed") instead
+    // of a bare "unknown" — the cold test showed an opaque message cost real diagnosis time.
+    return { pushed: success, refused: success ? undefined : "save-rejected",
+             forced: !!force, filesPushed: injected.length, validation,
              newMarker: record.lastModifiedDate, skipped, lint, skippedValidation: skipValidation && lint.errors > 0,
              serverPaths: success ? [...manifestPaths(pal)] : null };
 }

@@ -322,6 +322,16 @@ const TOOLS = [
             if (["gui-lock-self", "gui-lock-other", "override-disabled", "unknown-holder"].includes(res.refused)) {
                 return Object.assign(res, { message: withOverrideGate("REFUSED: " + blockedMessage(res.refused, res, palName), confirmOverride, palName) });
             }
+            // Server REJECTED the save (it ran the lint + lock + drift, then the server said no).
+            // Show the server's validation notes — this is the real reason (e.g. a tag the server
+            // doesn't allow), not a generic failure.
+            if (res.refused === "save-rejected") {
+                return Object.assign(res, {
+                    message: "PUSH FAILED: the server rejected the save (nothing was saved). The server's reasons:\n" +
+                        formatValidation(res.validation) +
+                        "\n\nFix the issue(s) above in your files and push again. (These come from the PalBuilder server, not the offline check.)"
+                });
+            }
             return Object.assign(res, { message: "Push failed: " + (res.reason || res.refused || "unknown") });
         }
     },

@@ -167,6 +167,19 @@ function lintMarkup(rel, src) {
         const isExternal = tag.attrs.some(a => a.name.toLowerCase() === "src");
         if (isExternal) return; // <script src=...> has no inline body to collide
 
+        // (0) An inline <script> inside a FRAGMENT is rejected by the PalBuilder server
+        // ("Tag script is not allowed" — confirmed live: a parseable:false fragment with an
+        // inline <script> failed the save). Move the JS to an external file in scripts/ and load
+        // it from the page, or reference it; do not inline it in a fragment. WARN (not error):
+        // one confirmed case, and the push now surfaces the server's rejection if it slips through.
+        if (isFragment && body.trim().length) {
+            add(offset, "warn", "scriptInFragment",
+                "This fragment contains an inline <script>. PalBuilder rejects a <script> tag inside a fragment at save time " +
+                "(\"Tag script is not allowed\"). Fix: move this JavaScript into an external file under scripts/ (e.g. scripts/your-module.js) " +
+                "and load it from the PAGE that includes this fragment; reference its functions from the fragment via onclick. " +
+                "See the palbuilder-frontend skill (fragment JavaScript goes in external scripts).");
+        }
+
         // (5) ${...} inside an inline <script> collides with server-side EL at render.
         const el = body.indexOf("${");
         if (el !== -1) {
