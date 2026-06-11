@@ -34,16 +34,21 @@ function readUtf8(abs) {
     try { return fs.readFileSync(abs, "utf8"); } catch (e) { return null; }
 }
 
-// Lint the whole workspace. Returns { findings, errors, warnings, filesChecked }.
-function validateWorkspace(workspaceDir) {
+// Lint a workspace. Returns { findings, errors, warnings, filesChecked, scope }.
+//   opts.only — optional Set of POSIX rel paths; when given, ONLY those files are linted (used
+//   by the pre-push gate to check just the files THIS push changes, so a pal with pre-existing
+//   violations in untouched files isn't blocked forever — that's not this push's responsibility).
+//   Omit `only` to lint the whole workspace (the standalone `validate` command / MCP tool).
+function validateWorkspace(workspaceDir, { only = null } = {}) {
     const findings = [];
     let filesChecked = 0;
+    const inScope = (rel) => !only || only.has(rel);
 
     // workflows/*.js (restricted engine)
     const wf = [];
     walkFiles(path.join(workspaceDir, "workflows"), "workflows", wf);
     for (const f of wf) {
-        if (!f.rel.endsWith(".js")) continue;
+        if (!f.rel.endsWith(".js") || !inScope(f.rel)) continue;
         const src = readUtf8(f.abs);
         if (src == null) continue;
         filesChecked++;
@@ -55,7 +60,7 @@ function validateWorkspace(workspaceDir) {
         const files = [];
         walkFiles(path.join(workspaceDir, folder), folder, files);
         for (const f of files) {
-            if (!MARKUP_EXT.has(path.extname(f.rel).toLowerCase())) continue;
+            if (!MARKUP_EXT.has(path.extname(f.rel).toLowerCase()) || !inScope(f.rel)) continue;
             const src = readUtf8(f.abs);
             if (src == null) continue;
             filesChecked++;
@@ -66,7 +71,7 @@ function validateWorkspace(workspaceDir) {
     findings.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
     const errors = findings.filter(f => f.severity === "error").length;
     const warnings = findings.filter(f => f.severity === "warn").length;
-    return { findings, errors, warnings, filesChecked };
+    return { findings, errors, warnings, filesChecked, scope: only ? "changed" : "workspace" };
 }
 
 // Format for an agent. `context` tags the message ("pre-push" vs standalone). Leads with an

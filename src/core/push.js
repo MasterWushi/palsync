@@ -11,6 +11,7 @@ const { CloudPistonAPIManager } = require("../../lib/apiManager");
 const { resolveServerPalByGuid } = require("./resolve");
 const { manifestPaths } = require("./pull");
 const { validateWorkspace } = require("./validate");
+const { diffWorkspace } = require("./localDrift");
 const lock = require("./lock");
 const drift = require("./drift");
 
@@ -25,6 +26,19 @@ const UNCREATABLE = [
 ];
 
 function isFile(p) { try { return fs.statSync(p).isFile(); } catch (e) { return false; } }
+
+// The set of POSIX rel paths this push CHANGES (added + modified vs the last-pulled baseline),
+// for scoping the pre-push lint. Returns null when there's no per-file baseline to diff against
+// (fresh/legacy record) — caller then lints the whole workspace. pal.json itself is dropped (it's
+// a manifest, not a lintable source file).
+function changedFileSet(record, workspaceDir) {
+    if (!record || !record.fileHashes) return null;
+    const d = diffWorkspace(record, workspaceDir);
+    const set = new Set();
+    for (const rel of d.added) if (rel !== "pal.json") set.add(rel);
+    for (const rel of d.changed) if (rel !== "pal.json") set.add(rel);
+    return set;
+}
 
 // Best-effort: the set of entry-strings the server already has, per uncreatable type. Used to tell
 // a NEW (uncreatable) entry from an existing one we may legitimately edit. Returns null on failure
@@ -88,10 +102,14 @@ function normalizeValidation(resp) {
 async function push(session, record, workspaceDir, { force = false, overrideLock = false, skipValidation = false } = {}) {
     // 0) PRE-PUSH LINT (offline): catch the mistakes that silently break in PalBuilder (invalid
     //    workflow JS, bad markup) BEFORE spending a network round-trip. ERRORS block the push
-    //    (the save would fail or the page/workflow would break) unless skipValidation is set;
-    //    WARNINGS never block — they ride along in the result for the agent to see. This runs
-    //    before lock/drift so a broken local tree fails fast and cheap.
-    const lint = validateWorkspace(workspaceDir);
+    //    unless skipValidation is set; WARNINGS never block — they ride along for the agent.
+    //    SCOPE = only the files THIS push changes (added/modified vs the last-pulled baseline),
+    //    so a pal carrying PRE-EXISTING violations in untouched files (e.g. a legacy workflow
+    //    full of object literals) is never permanently un-pushable — the gate holds the agent
+    //    responsible for its own changes, not for the pal's history. With no baseline (a fresh
+    //    or legacy record) we can't tell what changed, so we lint the whole tree.
+    const changed = changedFileSet(record, workspaceDir);
+    const lint = validateWorkspace(workspaceDir, changed ? { only: changed } : {});
     if (lint.errors > 0 && !skipValidation) {
         return { pushed: false, refused: "validation", lint };
     }
