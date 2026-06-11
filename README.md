@@ -79,6 +79,8 @@ palsync push     # validate, then push; releases the lock after (--keep-lock to 
 palsync pull     # sync from the server (refuses to overwrite un-pushed edits; --force overrides)
 palsync status   # server drift + un-pushed local changes (per file) + lock holder
 palsync test     # server-side workflow validation + live preview in your browser
+palsync preview  # render the pal (web: prints the HTML; console: opens a browser)
+palsync sync-datasets  # provision dataset tables from pal.json (safe by default)
 ```
 
 All take `--dir <workspace>` (default: current directory). Semantics are identical to the MCP
@@ -139,6 +141,7 @@ registration + launch commands rather than failing.
 | `pal_push` | **Validates first** (refuses on errors unless `skipValidation`), then pushes. Refuses if the server advanced since your last pull (drift) unless forced. |
 | `pal_pull` | Sync the pal from the server. Preserves new un-pushed local files; refuses (naming files) if it would overwrite un-pushed edits. |
 | `pal_test` | Run the server's own workflow validation and open a **live preview** in your browser (the agent never sees the credential-bearing URL). |
+| `pal_preview` | **Render the pal and return it to the agent.** For a **web** pal, fetches the server-rendered HTML so Claude can read its own output; for a **console** pal, opens it in your browser (the agent can't see it). |
 | `pal_sync_datasets` | **Create/update dataset tables** from `pal.json` definitions. Safe by default (never deletes data); the destructive `recreate` path requires an exact typed confirmation. |
 | `pal_status` | Is the server newer than your last pull? Any un-pushed local changes? Who holds the lock? |
 | `pal_lock` | Acquire the lock (auto-reclaims your own stale lock). |

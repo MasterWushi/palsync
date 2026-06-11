@@ -110,7 +110,12 @@ async function runTest(session, guid, { kind, workflowName } = {}) {
     return {
         ran: true, kind: chosen.kind, endpoint: chosen.endpoint, success, validated,
         validation, profiles: profiles.map(p => ({ name: p.profileName, id: p.profileId })),
-        availableKinds: avail.map(a => a.kind), _previewUrl: previewUrl
+        availableKinds: avail.map(a => a.kind),
+        // rawToken = the unmodified resp.token. For WEB it's a directly-fetchable URL on
+        // webpals.cloudpiston.com (no auth needed — verified live). _previewUrl carries cp-auth
+        // for the console browser-open path and must never be returned to the agent.
+        rawToken: validated ? resp.token : null,
+        _previewUrl: previewUrl
     };
 }
 

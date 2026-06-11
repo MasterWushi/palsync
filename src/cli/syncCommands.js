@@ -31,6 +31,8 @@ const USAGE = [
     "  palsync status [--dir <workspace>]                           Server drift, local changes, lock holder",
     "  palsync test   [--workflow console|web|transaction] [--no-preview] [--keep-lock] [--dir <ws>]",
     "                                                               Server-validate a workflow + open a live preview",
+    "  palsync preview [--workflow console|web|transaction] [--keep-lock] [--dir <ws>]",
+    "                                                               Render the pal (web: prints the HTML; console: opens a browser)",
     "  palsync sync-datasets [--datasets a,b] [--recreate] [--keep-lock] [--dir <ws>]",
     "                                                               Provision dataset tables from pal.json (safe by default)",
     "",
@@ -142,6 +144,15 @@ async function run(cmd, argv) {
             try { await lock.releaseByGuid(ctx.session, ctx.record.palGuid); } catch (e) { /* own next session reclaims */ }
         }
         return res.synced ? 0 : 1;
+    }
+
+    if (cmd === "preview") {
+        const res = await toolByName("pal_preview").run(ctx, { workflow: flags.workflow });
+        console.log(res.message);
+        if (!flags.keepLock && ctx.session.lockInfo) {
+            try { await lock.releaseByGuid(ctx.session, ctx.record.palGuid); } catch (e) { /* own next session reclaims */ }
+        }
+        return res.previewed ? 0 : 1;
     }
 
     if (cmd === "test") {

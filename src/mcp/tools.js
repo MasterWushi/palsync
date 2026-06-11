@@ -6,9 +6,17 @@ const { z } = require("zod");
 const { pull } = require("../core/pull");
 const { push } = require("../core/push");
 const { runTest } = require("../core/test");
+const { runPreview } = require("../core/preview");
 const { syncDatasets } = require("../core/datasets");
 const { validateWorkspace, formatValidation: formatLint } = require("../core/validate");
 const { openUrl } = require("../platform/openUrl");
+const fs = require("fs");
+const os = require("os");
+const pathMod = require("path");
+
+// How much rendered HTML to inline in the tool result before pointing the agent at the full
+// file. Enough to see structure + content without flooding a small model's context.
+const PREVIEW_INLINE_CAP = 12000;
 const lock = require("../core/lock");
 const drift = require("../core/drift");
 const { resolveServerPalByGuid } = require("../core/resolve");
@@ -146,6 +154,50 @@ const TOOLS = [
             // Strip the credential URL before returning — defense in depth.
             const safe = Object.assign({}, res); delete safe._previewUrl;
             return Object.assign(safe, { message });
+        }
+    },
+    {
+        name: "pal_preview",
+        description: "See what the pal actually RENDERS. For a WEB pal this fetches the server-rendered HTML and RETURNS IT TO YOU so you can read your real output (it also saves the full HTML to a file). For a CONSOLE/transaction pal the render needs a browser, so it opens in the user's browser and you will NOT see it (ask the user). The preview shows the LAST PUSHED version — pal_push first to preview your latest edits. (For just a pass/fail validation check, use pal_test; for an offline code check, pal_validate.)",
+        inputShape: { workflow: z.enum(["console", "web", "transaction"]).optional() },
+        async run(ctx, { workflow } = {}) {
+            const res = await runPreview(ctx.session, ctx.record.palGuid, ctx.record, ctx.workspaceDir, { workflow });
+            if (ctx.lifecycle) ctx.lifecycle.onActivity(); // preview takes the lock — re-arm idle
+            const dirtyNote = res.dirty
+                ? "\n⚠ You have un-pushed local changes (" + (res.dirtyFiles || []).join(", ") + "). This preview shows the LAST PUSHED version, NOT your current edits — run pal_push, then pal_preview again to see them."
+                : "";
+            if (!res.previewed) {
+                if (res.validated === false) {
+                    return Object.assign(res, { message: "Cannot preview — the pal did not validate on the server:\n" + formatValidation(res.validation) + "\n" + res.reason + dirtyNote });
+                }
+                return Object.assign(res, { message: "Cannot preview: " + res.reason + dirtyNote });
+            }
+            if (res.kind === "web" && res.agentVisible) {
+                // Save the full HTML to a file the agent can Read, and inline a capped slice.
+                let filePath = null;
+                try {
+                    filePath = pathMod.join(os.tmpdir(), "palsync-preview-" + ctx.record.palGuid.replace(/[^A-Za-z0-9_-]/g, "") + ".html");
+                    fs.writeFileSync(filePath, res.html, "utf8");
+                } catch (e) { /* best-effort */ }
+                const truncated = res.html.length > PREVIEW_INLINE_CAP;
+                const shown = truncated ? res.html.slice(0, PREVIEW_INLINE_CAP) : res.html;
+                const safe = Object.assign({}, res); delete safe.html; // don't double-include in structured result
+                return Object.assign(safe, {
+                    htmlFile: filePath,
+                    message: "WEB preview rendered — this is your pal's actual server-rendered HTML output.\n" +
+                        "  url=" + res.url + "  content-type=" + res.contentType + "  title=" + JSON.stringify(res.title) + "  size=" + res.bytes + " bytes" + dirtyNote +
+                        (filePath ? "\n  Full HTML saved to: " + filePath + " (Read it to inspect the whole page)." : "") +
+                        "\n\n--- rendered HTML" + (truncated ? " (first " + PREVIEW_INLINE_CAP + " of " + res.bytes + " bytes — read the file for the rest)" : "") + " ---\n" + shown
+                });
+            }
+            // console/transaction — open in the user's browser; the agent cannot see it.
+            let opened = { opened: false };
+            if (res._previewUrl) opened = await openUrl(res._previewUrl);
+            const safe = Object.assign({}, res); delete safe._previewUrl;
+            return Object.assign(safe, {
+                message: (opened.opened ? "Opened the preview in the user's browser. " : "Could not open a browser automatically (" + opened.reason + "). ") +
+                    res.reason + dirtyNote
+            });
         }
     },
     {
