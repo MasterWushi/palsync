@@ -21,6 +21,7 @@ const { register } = require("../mcp/register");
 const { registerCodex } = require("../mcp/registerCodex");
 const { hashWorkspace, hashPaths } = require("../core/workspaceHash");
 const { diffWorkspace, describeDiff } = require("../core/localDrift");
+const { mergeWorkspace } = require("../core/merge");
 
 function slug(name) {
     return String(name).trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "pal";
@@ -48,6 +49,29 @@ async function resolveLocalDrift({ session, existing, workspaceDir, palName, dif
         }
         if (action === "skip") return "skip";
         if (action === "overwrite") return "pull";
+        if (action === "merge") {
+            // 3-way merge incorporates the server's changes into the workspace, keeping local
+            // edits where they don't collide. After it, the workspace already holds the server
+            // state — so setup must NOT pull again (that would re-overwrite the merge); return
+            // "skip" with the record's marker/baseline already advanced by mergeWorkspace.
+            log("merging local changes with the server (3-way)…");
+            const mr = await mergeWorkspace(session, existing.palGuid, existing, workspaceDir);
+            if (!mr.merged) {
+                log("merge could not run (" + mr.reason + ") — choose another option");
+                info = { phase: "initial", diff, palName, workspaceDir };
+                continue;
+            }
+            existing.localHash = hashWorkspace(workspaceDir);
+            if (mr.serverPaths) existing.fileHashes = hashPaths(workspaceDir, mr.serverPaths);
+            await palsyncfile.write(workspaceDir, existing);
+            if (mr.conflicts.length) {
+                log("merged with " + mr.conflicts.length + " conflict(s) to resolve: " +
+                    mr.conflicts.map(c => c.rel).join(", ") + " (compare each against its .server file, then push)");
+            } else {
+                log("merged cleanly — local + server changes combined");
+            }
+            return "skip"; // workspace already reconciled; do not pull over it
+        }
         if (action === "push" || action === "force-push") {
             log(action === "force-push" ? "force-pushing local changes (past server drift)…" : "pushing local changes first…");
             const pr = await push(session, existing, workspaceDir, { force: action === "force-push" });

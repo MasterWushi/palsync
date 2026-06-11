@@ -68,7 +68,8 @@ async function driftPrompt(info) {
             const v = await clack.select({
                 message: "Both sides changed — how do you want to resolve it?",
                 options: [
-                    { value: "skip", label: "Skip the pull — keep my local state, decide later (safest)" },
+                    { value: "merge", label: "Merge — keep BOTH sides' changes where they don't collide (recommended)" },
+                    { value: "skip", label: "Skip the pull — keep my local state, decide later" },
                     { value: "force-push", label: "Force-push MY local changes (overwrites their server save)" },
                     { value: "overwrite", label: "Pull THEIR server state (overwrites my local changes)" },
                     { value: "abort", label: "Quit palsync" }
@@ -97,6 +98,7 @@ async function driftPrompt(info) {
         message: "Un-pushed local changes in " + (info.palName || "this pal") + " — what do you want to do?",
         options: [
             { value: "push", label: "Push my local changes to the server first, then pull (recommended)" },
+            { value: "merge", label: "Merge — combine my changes with the server's where they don't collide" },
             { value: "skip", label: "Skip the pull — work on the local state as-is" },
             { value: "overwrite", label: "Pull anyway — OVERWRITE the local changes listed above" },
             { value: "abort", label: "Quit palsync" }

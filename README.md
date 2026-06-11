@@ -85,6 +85,7 @@ OS keychain:
 palsync validate # offline code check — no login needed (workflow JS + markup rules)
 palsync push     # validate, then push; releases the lock after (--keep-lock to hold it)
 palsync pull     # sync from the server (refuses to overwrite un-pushed edits; --force overrides)
+palsync merge    # 3-way merge local + server changes (keeps both where they don't collide)
 palsync status   # server drift + un-pushed local changes (per file) + lock holder
 palsync test     # server-side workflow validation + live preview in your browser
 palsync seo-audit # on-page SEO audit of a WEB pal's rendered page
@@ -104,9 +105,9 @@ tools — same drift guards, same preserve-on-pull, same uncreatable-type backst
 - **Pull refuses rather than overwrites.** If server-tracked files have un-pushed local edits,
   pull refuses and names the files (push first, or force to discard).
 - **The launcher checks too.** Re-running `palsync` into a workspace with un-pushed changes
-  prompts: push first (recommended), pull anyway, skip the pull, or quit — never a silent
-  overwrite. If local *and* server both changed, it says who saved on the server and offers a
-  force-push/overwrite/skip choice.
+  prompts: push first (recommended), **merge** (combine both sides), pull anyway, skip, or quit —
+  never a silent overwrite. If local *and* server both changed, merge keeps both wherever they
+  don't collide and flags the rest.
 - **The MCP server never exits on its own.** Idle releases only the pal lock (a courtesy to
   teammates); the next tool call re-locks. The server lives exactly as long as Claude Code does.
 
@@ -170,6 +171,7 @@ registration + launch commands rather than failing.
 | `pal_validate` | **Offline code check** — flags the PalBuilder breakers (object literals/`let`/`const` in workflows, unclosed void tags, undocumented `c:` attributes, `${}` in inline scripts, …) with file:line and the exact fix. Runs automatically inside `pal_push`. |
 | `pal_push` | **Validates first** (refuses on errors unless `skipValidation`), then pushes. Refuses if the server advanced since your last pull (drift) unless forced. |
 | `pal_pull` | Sync the pal from the server. Preserves new un-pushed local files; refuses (naming files) if it would overwrite un-pushed edits. |
+| `pal_merge` | **3-way merge** of your un-pushed local changes with the server's changes. Keeps both wherever they don't collide; a file changed on both sides stays yours with theirs saved as `<file>.server`. Never overwrites your work silently. |
 | `pal_test` | Run the server's own workflow validation and open a **live preview** in your browser (the agent never sees the credential-bearing URL). |
 | `pal_preview` | **Render the pal and return it to the agent.** For a **web** pal, fetches the server-rendered HTML so Claude can read its own output; for a **console** pal, opens it in your browser (the agent can't see it). |
 | `pal_seo_audit` | **On-page SEO audit of a web pal's rendered page** — title/description lengths, canonical, the 5 `og:` tags with absolute `og:image`/`og:url`, twitter:card, one H1, viewport, JSON-LD, img alt, non-ASCII attribute values. Every finding carries the exact fix; passing checks are listed too. |

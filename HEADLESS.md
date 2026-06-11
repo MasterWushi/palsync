@@ -83,7 +83,7 @@ env:     PALSYNC_WORKSPACE=/home/you/pals/isr
 ```
 
 It exposes: `pal_status`, `pal_validate`, `pal_test`, `pal_preview`, `pal_seo_audit`,
-`pal_sync_datasets`, `pal_pull`, `pal_push`, `pal_lock`, `pal_unlock` (10 tools — a modest context cost; keep other
+`pal_sync_datasets`, `pal_pull`, `pal_merge`, `pal_push`, `pal_lock`, `pal_unlock` (11 tools — a modest context cost; keep other
 heavy MCP servers off the same session if context is tight).
 
 **OpenCode** — `~/.config/opencode/opencode.json` (or project `opencode.json`):
@@ -128,6 +128,7 @@ for harnesses without MCP:
 palsync validate --dir ~/pals/isr            # offline lint (no login needed)
 palsync status   --dir ~/pals/isr
 palsync pull     --dir ~/pals/isr
+palsync merge    --dir ~/pals/isr            # 3-way merge local + server changes
 palsync push     --dir ~/pals/isr            # validates first; refuses on new errors
 palsync test     --dir ~/pals/isr
 palsync preview  --dir ~/pals/isr

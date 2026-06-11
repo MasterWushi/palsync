@@ -28,6 +28,7 @@ const USAGE = [
     "  palsync validate [--dir <workspace>]                         Offline code check (no server/login needed)",
     "  palsync push   [--force] [--skip-validation] [--keep-lock] [--dir <ws>]   Push local changes (no MCP server needed)",
     "  palsync pull   [--force] [--dir <workspace>]                 Pull/sync from the server",
+    "  palsync merge  [--keep-lock] [--dir <workspace>]            3-way merge local + server changes (keeps both where they don't collide)",
     "  palsync status [--dir <workspace>]                           Server drift, local changes, lock holder",
     "  palsync test   [--workflow console|web|transaction] [--no-preview] [--keep-lock] [--dir <ws>]",
     "                                                               Server-validate a workflow + open a live preview",
@@ -131,6 +132,15 @@ async function run(cmd, argv) {
         const res = await toolByName("pal_status").run(ctx, {});
         console.log(res.message);
         return 0;
+    }
+
+    if (cmd === "merge") {
+        const res = await toolByName("pal_merge").run(ctx, {});
+        console.log(res.message);
+        if (!flags.keepLock && ctx.session.lockInfo) {
+            try { await lock.releaseByGuid(ctx.session, ctx.record.palGuid); } catch (e) { /* own next session reclaims */ }
+        }
+        return res.merged && (!res.conflicts || res.conflicts.length === 0) ? 0 : 1;
     }
 
     if (cmd === "pull") {

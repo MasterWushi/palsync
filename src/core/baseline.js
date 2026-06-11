@@ -8,15 +8,19 @@
 // rewrite that legacy code just to land an unrelated edit; only NEW errors block. (This snapshot
 // is also the foundation a future 3-way merge needs.)
 //
-// Only LINTABLE files are stored (workflow JS, page/fragment markup, dataset defs) — the only
-// files the gate diffs — so the store stays small (text, not images/binaries). The store lives
-// under .palsync/, which pull's stale-delete and the workspace hash never touch.
+// TEXT server-tracked files are stored — the common-ancestor snapshot used by BOTH the pre-push
+// gate (which diffs the lintable subset) and the 3-way merge (which needs the ancestor of every
+// text file an agent might hand-edit: workflows, pages, fragments, scripts, styles, dataset
+// defs). Binary folders (images, attachments, documents) are skipped — a 3-way TEXT merge can't
+// reconcile bytes, and they bloat the store. It lives under .palsync/, which pull's stale-delete
+// and the workspace hash never touch.
 const fs = require("fs");
 const path = require("path");
 
 const BASELINE_DIR = path.join(".palsync", "baseline");
 
-// The files the gate can lint (must match validate/index.js lintContent dispatch).
+// The files the GATE can lint (must match validate/index.js lintContent dispatch). A subset of
+// what's snapshotted.
 function isLintable(rel) {
     if (rel.startsWith("workflows/") && rel.endsWith(".js")) return true;
     if ((rel.startsWith("pages/") || rel.startsWith("fragments/")) && /\.(html?|xhtml)$/i.test(rel)) return true;
@@ -24,13 +28,25 @@ function isLintable(rel) {
     return false;
 }
 
-// Snapshot the current (server-equal) lintable files into the baseline store. Call right after a
+// Folders whose files are text and worth a merge ancestor. Images/attachments/documents are
+// excluded (binary; merge can't reconcile them).
+const TEXT_FOLDERS = ["workflows", "pages", "fragments", "scripts", "styles", "emails",
+    "datasets", "dataviews", "data", "datalists"];
+
+// Is this a text server-tracked file worth snapshotting (for the gate and/or merge)?
+function isTextTracked(rel) {
+    const slash = rel.indexOf("/");
+    if (slash === -1) return false;
+    return TEXT_FOLDERS.indexOf(rel.slice(0, slash)) !== -1;
+}
+
+// Snapshot the current (server-equal) text files into the baseline store. Call right after a
 // pull or a successful push, when the workspace's server-tracked files match the server.
 function snapshot(workspaceDir, serverPaths) {
     const baseAbs = path.join(workspaceDir, BASELINE_DIR);
     fs.rmSync(baseAbs, { recursive: true, force: true });
     for (const rel of serverPaths || []) {
-        if (!isLintable(rel)) continue;
+        if (!isTextTracked(rel)) continue;
         const src = path.join(workspaceDir, ...rel.split("/"));
         let content;
         try { content = fs.readFileSync(src); }
@@ -39,6 +55,23 @@ function snapshot(workspaceDir, serverPaths) {
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.writeFileSync(dest, content);
     }
+}
+
+// Every rel path currently in the baseline store (POSIX). Used by merge to know the ancestor set.
+function list(workspaceDir) {
+    const out = [];
+    const baseAbs = path.join(workspaceDir, BASELINE_DIR);
+    (function walk(dirAbs, relBase) {
+        let entries;
+        try { entries = fs.readdirSync(dirAbs, { withFileTypes: true }); }
+        catch (e) { return; }
+        for (const e of entries) {
+            const childRel = relBase ? relBase + "/" + e.name : e.name;
+            if (e.isDirectory()) walk(path.join(dirAbs, e.name), childRel);
+            else out.push(childRel);
+        }
+    })(baseAbs, "");
+    return out;
 }
 
 // Baseline content for one file (POSIX rel), or null if not snapshotted.
@@ -53,4 +86,4 @@ function exists(workspaceDir) {
     catch (e) { return false; }
 }
 
-module.exports = { snapshot, read, exists, isLintable, BASELINE_DIR };
+module.exports = { snapshot, read, exists, list, isLintable, isTextTracked, TEXT_FOLDERS, BASELINE_DIR };

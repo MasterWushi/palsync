@@ -7,6 +7,7 @@ const { pull } = require("../core/pull");
 const { push } = require("../core/push");
 const { runTest } = require("../core/test");
 const { runPreview } = require("../core/preview");
+const { mergeWorkspace, formatMerge } = require("../core/merge");
 const { runSeoAudit, formatSeoAudit } = require("../core/seoAudit");
 const { syncDatasets } = require("../core/datasets");
 const { validateWorkspace, formatValidation: formatLint } = require("../core/validate");
@@ -281,7 +282,7 @@ const TOOLS = [
             if (d.dirty && !force) {
                 return { pulled: false, refused: "local-changes", changed: d.changed, deleted: d.deleted, added: d.added,
                     message: "REFUSED: un-pushed local changes would be lost by this pull.\n" + describeDiff(d) +
-                        "\npal_push first, or pal_pull with force:true to overwrite them." +
+                        "\npal_push first; or pal_merge to keep BOTH your changes and the server's where they don't collide; or pal_pull with force:true to discard your local changes." +
                         (d.legacy ? "" : " (New local files are preserved either way.)") };
             }
             const { resolved, written, removed, preserved, serverPaths } = await pull(ctx.session, ctx.record.palGuid, ctx.workspaceDir, { baseline: ctx.record.fileHashes || null });
@@ -293,6 +294,21 @@ const TOOLS = [
                 message: "Pulled " + ctx.record.palName + ": " + written.base64.length + " code files + " + written.json.length + " data/schema files. marker=" + resolved.lastModifiedDate +
                     (removed.length ? "\nRemoved (deleted on server): " + removed.join(", ") : "") +
                     (preserved.length ? "\nPreserved local work:\n" + preserved.map(p => "   - " + p.rel + " — " + p.note).join("\n") : "") };
+        }
+    },
+    {
+        name: "pal_merge",
+        description: "Reconcile un-pushed LOCAL changes with changes made on the SERVER since your last pull — keeping BOTH wherever they don't collide (a 3-way merge). Use this instead of force-pushing or force-pulling when both you and someone else (or your other session) edited the pal: files only you changed stay yours, files only they changed are taken from the server, and a file BOTH sides changed differently is left as YOURS with their version saved next to it as <file>.server for you to combine by hand. Never overwrites your work silently. After a clean merge (no conflicts) the server's changes are incorporated, so a follow-up pal_push won't be drift-blocked.",
+        inputShape: {},
+        async run(ctx) {
+            const res = await mergeWorkspace(ctx.session, ctx.record.palGuid, ctx.record, ctx.workspaceDir);
+            if (ctx.lifecycle) ctx.lifecycle.onActivity();
+            if (res.merged) {
+                refreshBaseline(ctx.record, ctx.workspaceDir, res.serverPaths);
+                ctx.record.pulledAt = nowIso();
+                await ctx.persist();
+            }
+            return Object.assign(res, { message: formatMerge(res) });
         }
     },
     {
