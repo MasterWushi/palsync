@@ -74,7 +74,12 @@ function looksLikeFragment(rel, src) {
 
 const VALID_ENTITY = /^&(#[0-9]+|#x[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/;
 
-function lintMarkup(rel, src) {
+function lintMarkup(rel, src, opts) {
+    // Fragments marked parseable:false in pal.json skip server tag-processing entirely —
+    // inline <script> and ${} are FINE there (seen live: a non-parseable google-analytics
+    // fragment on Major League Coatings). opts.nonParseable = Set of "fragments/<file>" rels.
+    const nonParseable = (opts && opts.nonParseable) || null;
+    const skipScriptChecks = !!(nonParseable && nonParseable.has(rel));
     const findings = [];
     const lineAt = lineIndexer(src);
     const isFragment = looksLikeFragment(rel, src);
@@ -120,8 +125,12 @@ function lintMarkup(rel, src) {
     function checkTag(tag, lt) {
         const lname = tag.name.toLowerCase();
 
-        // (1) HTML void element must self-close.
-        if (VOID_ELEMENTS.has(lname) && !tag.selfClosed) {
+        // (1) HTML void element must self-close — UNLESS it is immediately closed with an
+        // explicit paired end-tag (<source ...></source>), which is balanced XML and accepted
+        // by the server (seen on live pals: Major League Coatings, 2026-06).
+        const pairClosed = VOID_ELEMENTS.has(lname) && !tag.selfClosed &&
+            src.slice(tag.end, tag.end + lname.length + 3).toLowerCase() === "</" + lname + ">";
+        if (VOID_ELEMENTS.has(lname) && !tag.selfClosed && !pairClosed) {
             add(lt, "error", "voidNotClosed",
                 "<" + lname + "> is a void HTML element and MUST be explicitly self-closed in PalBuilder's strict XHTML. " +
                 "An unclosed void tag is a hard parse error, not a warning. Fix: write <" + lname + " ... /> (add the ' /' before '>'). " +
@@ -165,6 +174,7 @@ function lintMarkup(rel, src) {
     }
 
     function checkInlineScript(body, offset, tag) {
+        if (skipScriptChecks) return; // parseable:false fragment — server never processes it
         const isExternal = tag.attrs.some(a => a.name.toLowerCase() === "src");
         if (isExternal) return; // <script src=...> has no inline body to collide
 
@@ -174,7 +184,7 @@ function lintMarkup(rel, src) {
         // agent wrote an inline <script> in a fragment; the server rejected the whole push). As a
         // blocking error the pre-push gate stops it here, with the fix, BEFORE the failed push —
         // instead of letting it through to a server rejection the agent then has to diagnose.
-        if (isFragment && body.trim().length) {
+        if (isFragment && !skipScriptChecks && body.trim().length) {
             add(offset, "error", "scriptInFragment",
                 "This fragment contains an inline <script>. PalBuilder REJECTS a <script> tag inside a fragment at save time " +
                 "(\"Tag script is not allowed\") — the push will fail. Fix: move this JavaScript into an external file under scripts/ " +

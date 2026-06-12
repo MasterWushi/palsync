@@ -20,6 +20,19 @@ const { lintPalJson } = require("./palJson");
 
 const MARKUP_EXT = new Set([".html", ".htm", ".xhtml"]);
 
+// Fragments flagged parseable:false in pal.json — the server skips tag processing for them,
+// so script/EL lint rules don't apply.
+function nonParseableSet(rootDir) {
+    try {
+        const pj = JSON.parse(require("fs").readFileSync(path.join(rootDir, "pal.json"), "utf8"));
+        const set = new Set();
+        for (const e of (((pj.fragments || {}).entry) || [])) {
+            if (e && e.Fragment && e.Fragment.parseable === false) set.add("fragments/" + e.string);
+        }
+        return set;
+    } catch (e) { return new Set(); }
+}
+
 function walkFiles(absDir, relBase, out) {
     let entries;
     try { entries = fs.readdirSync(absDir, { withFileTypes: true }); }
@@ -43,6 +56,7 @@ function readUtf8(abs) {
 //   Omit `only` to lint the whole workspace (the standalone `validate` command / MCP tool).
 function validateWorkspace(workspaceDir, { only = null } = {}) {
     const findings = [];
+    const nonParseable = nonParseableSet(workspaceDir);
     let filesChecked = 0;
     const inScope = (rel) => !only || only.has(rel);
 
@@ -66,7 +80,7 @@ function validateWorkspace(workspaceDir, { only = null } = {}) {
             const src = readUtf8(f.abs);
             if (src == null) continue;
             filesChecked++;
-            findings.push(...lintMarkup(f.rel, src));
+            findings.push(...lintMarkup(f.rel, src, { nonParseable }));
         }
     }
 
