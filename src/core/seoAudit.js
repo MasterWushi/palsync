@@ -12,7 +12,9 @@
 //   "error" = will materially hurt search/social handling of the page
 //   "warn"  = best-practice gap; review it
 // Every finding is a full sentence with the fix — built for the least capable agent.
-const { runPreview } = require("./preview");
+const { runPreview, openInstanceSession } = require("./preview");
+const fs = require("fs");
+const path = require("path");
 
 function collectMetas(html) {
     const metas = [];
@@ -132,6 +134,22 @@ function auditHtml(html, { url = "" } = {}) {
 // Format for an agent: verdict first, then every finding spelled out, then what passed
 // (positive confirmation so a literal-minded agent knows those areas are done).
 function formatSeoAudit(result) {
+    // Sitewide shape: result.pages = per-page audits
+    if (result.pages && Array.isArray(result.pages)) {
+        const head = (result.errors > 0 ? "SEO AUDIT FAILED" : result.warnings > 0 ? "SEO AUDIT PASSED WITH WARNINGS" : "SEO AUDIT PASSED")
+            + " — " + result.errors + " error(s), " + result.warnings + " warning(s) across " + result.pageCount + " page(s).";
+        const lines = [head];
+        if (result.errors > 0) lines.push("ERROR = materially hurts how search engines/social scrapers handle the page; fix every error.");
+        for (const p of result.pages) {
+            if (p.fetchFailed) { lines.push(p.page + ": ERROR — page did not render (HTTP " + p.status + "). Check the route in the workflow and the pal.json entry."); continue; }
+            if (!p.findings.length) continue;
+            lines.push(p.page + (p.noindex ? " (noindex — warnings suppressed)" : "") + ":");
+            for (const f of p.findings) lines.push("   " + (f.severity === "error" ? "ERROR" : "WARNING") + " — " + f.message);
+        }
+        const clean = result.pages.filter(p => !p.fetchFailed && !p.findings.length).length;
+        lines.push(clean + "/" + result.pageCount + " pages fully clean.");
+        return lines.join("\n");
+    }
     const { findings, passed, errors, warnings, url } = result;
     const head = (errors > 0 ? "SEO AUDIT FAILED" : warnings > 0 ? "SEO AUDIT PASSED WITH WARNINGS" : "SEO AUDIT PASSED")
         + " — " + errors + " error(s), " + warnings + " warning(s)" + (url ? " for " + url : "") + ".";
@@ -144,13 +162,46 @@ function formatSeoAudit(result) {
 
 // Fetch the rendered page via the preview plumbing and audit it. Web pals only.
 async function runSeoAudit(session, guid, record, workspaceDir) {
-    const p = await runPreview(session, guid, record, workspaceDir, { workflow: "web" });
-    if (!p.previewed) return { audited: false, reason: p.reason, validation: p.validation };
-    if (!p.agentVisible) {
-        return { audited: false, reason: "SEO audit works on WEB pals (their render is publicly fetchable). This is a " + p.kind + " pal — console pages aren't crawled by search engines, so an SEO audit doesn't apply." };
-    }
-    const result = auditHtml(p.html, { url: p.url });
-    return Object.assign({ audited: true, dirty: p.dirty, dirtyFiles: p.dirtyFiles }, result);
-}
+    // Page list from the workspace manifest — audit EVERY page, not just the landing page
+    // (the OBE smoke test had to rebuild this by hand: 9 of 23 pages had findings index.html didn't).
+    let pageNames = [];
+    try {
+        const pj = JSON.parse(fs.readFileSync(path.join(workspaceDir, "pal.json"), "utf8"));
+        pageNames = (((pj.pages || {}).entry) || []).map(e => e.string).filter(Boolean);
+    } catch (e) { /* fall through to landing-page-only */ }
 
+    if (!pageNames.length) {
+        const p = await runPreview(session, guid, record, workspaceDir, { workflow: "web" });
+        if (!p.previewed) return { audited: false, reason: p.reason, validation: p.validation };
+        if (!p.agentVisible) {
+            return { audited: false, reason: "SEO audit works on WEB pals (their render is publicly fetchable). This is a " + p.kind + " pal — console pages aren't crawled by search engines, so an SEO audit doesn't apply." };
+        }
+        const result = auditHtml(p.html, { url: p.url });
+        return Object.assign({ audited: true, dirty: p.dirty, dirtyFiles: p.dirtyFiles, pages: null }, result);
+    }
+
+    const inst = await openInstanceSession(session, guid);
+    if (!inst.opened) return { audited: false, reason: inst.reason, validation: inst.validation };
+    const pages = [];
+    let errors = 0, warnings = 0;
+    for (const name of pageNames) {
+        const r = await inst.fetchPath(name);
+        if (r.status !== 200) {
+            pages.push({ page: name, fetchFailed: true, status: r.status, findings: [], errors: 1, warnings: 0 });
+            errors += 1;
+            continue;
+        }
+        const noindex = /<meta[^>]*name=["']robots["'][^>]*noindex/i.test(r.html);
+        const a = auditHtml(r.html, { url: r.url });
+        if (noindex) {
+            // noindex pages aren't crawled — og/canonical/JSON-LD gaps don't matter; keep only errors
+            a.findings = a.findings.filter(f => f.severity === "error");
+            a.warnings = 0;
+            a.errors = a.findings.length;
+        }
+        pages.push(Object.assign({ page: name, noindex }, a));
+        errors += a.errors; warnings += a.warnings;
+    }
+    return { audited: true, pages, errors, warnings, pageCount: pageNames.length };
+}
 module.exports = { auditHtml, formatSeoAudit, runSeoAudit, collectMetas };

@@ -1,9 +1,31 @@
 <c:ignore xmlns:c="contractpal">
   <main id="main">
 
-    <!-- HERO: centered single-column (deliberately NOT the left-text/right-image template
-         default — see design-core "Composition"). The type carries it. -->
+    <!-- HERO: in-document <img> for LCP — NOT a CSS background-image.
+         fetchpriority="high" tells the browser this is the LCP candidate.
+         srcset provides a mobile variant (swap paths to your actual assets).
+         loading="eager" is the default but stated explicitly for clarity.
+         Use a real asset; a placeholder kills the Lighthouse performance score.
+
+         CSS backgrounds are NOT eligible for fetchpriority and delay LCP.
+         If you need the image to cover the full hero (e.g. a painted landscape),
+         position the <img> as cover with object-fit:cover inside the section,
+         then layer the text content on top via CSS (position absolute / grid overlay). -->
     <section class="hero">
+      <img
+        src="../Images/hero.jpg"
+        srcset="../Images/hero-mobile.jpg 640w, ../Images/hero.jpg 1200w"
+        sizes="100vw"
+        alt="{{PAL_NAME}} — brief description of what the hero image shows"
+        fetchpriority="high"
+        loading="eager"
+        width="1200"
+        height="600"
+        class="hero-img"
+      />
+      <!-- width + height attributes prevent layout shift (CLS). Set to your actual
+           image dimensions. The CSS can override the rendered size — these just
+           give the browser the aspect ratio before the image loads. -->
       <div class="wrap-narrow hero-inner">
         <span class="eyebrow">For your audience, in three words</span>
         <h1 class="h1">The one-line promise, <span class="em">stated plainly.</span></h1>

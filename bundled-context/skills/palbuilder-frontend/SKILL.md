@@ -487,6 +487,43 @@ browser; `fetch`/ClientPal expose everything in devtools.
 
 ---
 
+## Platform facts (learned on live pals — trust these)
+
+1. **New files need pal.json entries.** A file created in `pages/`, `fragments/`, `styles/`,
+   `scripts/`, `images/`, or `emails/` is NOT pushed until `pal.json` has a matching entry.
+   Copy an existing entry of the same type; set the `string` and `filename` fields. Push warns
+   about strays — never ignore that warning.
+
+2. **`<noscript>` wrappers are stripped; inner content is kept.** The server removes the
+   `<noscript>` tag but renders everything inside it unconditionally. Never use noscript
+   fallbacks — the fallback becomes live content for all users.
+
+3. **`.webp` images are served as `text/html` (broken).** Use JPEG or PNG only.
+
+4. **`<script>` tags are forbidden inside fragments.** The server rejects the push with
+   "Tag script is not allowed." Page shells load scripts; fragments call functions via `onclick`.
+   (This is already in Fragment Architecture above — treat it as a hard build error, not a lint
+   warning.)
+
+5. **`c:a` renders as a `javascript:` href.** Any JS click-interceptor on links MUST guard
+   `a.protocol !== "http:" && a.protocol !== "https:"` or it silently breaks all `c:a` actions.
+
+6. **Only these named entities are safe: `&amp;` `&lt;` `&gt;` `&quot;` `&apos;`.** Any other
+   named entity (and any non-ASCII byte) triggers a server validation flag. Write arrows as
+   `-&gt;`. Keep all markup ASCII.
+
+7. **Never edit markup or CSS with regex or scripts.** Regex surgery has caused orphan `</div>`
+   (server rejection) and corrupted a stylesheet twice. Read the target region, replace the
+   exact block by hand.
+
+8. **`robots.txt` and `sitemap.xml` must be served from the workflow.** Every path — including
+   `/robots.txt` and `/sitemap.xml` — routes through the workflow on both test and production
+   instances. The router fallback serves HTML as robots.txt (real incident: 305 parse errors in
+   Lighthouse). Intercept these in the action switch and return the raw body directly; see the
+   back-end skill for the code pattern.
+
+---
+
 ## Common Mistakes
 
 | Wrong | Correct |

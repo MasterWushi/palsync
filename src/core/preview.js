@@ -90,4 +90,55 @@ async function runPreview(session, guid, record, workspaceDir, { workflow } = {}
     };
 }
 
-module.exports = { runPreview, fetchRendered, titleOf };
+// Open a web pal's test instance once and return a session you can fetch many paths from.
+// The verification primitive (OBE smoke test): "push said OK" is not "the page renders".
+async function openInstanceSession(session, guid) {
+    const t = await runTest(session, guid, { kind: "web" });
+    if (!t.ran) {
+        return { opened: false, reason: "Could not start a test instance (" + (t.blocked || "unknown") + ")." };
+    }
+    if (!t.validated) {
+        return { opened: false, validation: t.validation,
+                 reason: "The pal did not validate on the server — fix the validation notes and push first." };
+    }
+    if (t.kind !== "web") {
+        return { opened: false, reason: "Page fetching works on WEB pals; this is a " + t.kind + " pal." };
+    }
+    const jar = new Jar();
+    let current = t.rawToken;
+    let finalUrl = null;
+    for (let i = 0; i < 8; i++) {
+        const resp = await fetch(current, { redirect: "manual", headers: jar.cookies.size ? { cookie: jar.header() } : {} });
+        jar.absorb(resp);
+        const loc = resp.headers.get("location");
+        if (resp.status >= 300 && resp.status < 400 && loc) { current = new URL(loc, current).toString(); continue; }
+        await resp.text();
+        finalUrl = current;
+        break;
+    }
+    if (!finalUrl) return { opened: false, reason: "Too many redirects activating the test session." };
+    const u = new URL(finalUrl);
+    const seg = u.pathname.split("/").filter(Boolean)[0] || "";
+    const base = u.origin + "/" + (seg ? seg + "/" : "");
+    return {
+        opened: true, base,
+        async fetchPath(path) {
+            const target = base + String(path || "").replace(/^\/+/, "");
+            const resp = await fetch(target, { headers: jar.cookies.size ? { cookie: jar.header() } : {} });
+            const body = await resp.text();
+            return { url: target, status: resp.status, contentType: resp.headers.get("content-type") || "",
+                     title: titleOf(body), bytes: body.length, html: body };
+        }
+    };
+}
+
+// Single-path convenience wrapper (pal_fetch tool).
+async function fetchPagePath(session, guid, path) {
+    const inst = await openInstanceSession(session, guid);
+    if (!inst.opened) return { fetched: false, reason: inst.reason, validation: inst.validation };
+    const r = await inst.fetchPath(path);
+    if (r.html.length > 250000) r.html = r.html.slice(0, 250000) + "\n<!-- truncated by pal_fetch at 250KB -->";
+    return Object.assign({ fetched: true }, r);
+}
+
+module.exports = { runPreview, fetchRendered, fetchPagePath, openInstanceSession, titleOf };

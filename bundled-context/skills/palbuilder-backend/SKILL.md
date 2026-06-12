@@ -390,6 +390,31 @@ fully visible in devtools.
 
 ---
 
+## Platform facts — routing edge cases (learned on live pals)
+
+**`robots.txt` / `sitemap.xml`** — every path hits the workflow on both test and production instances.
+Intercept these by href before the action switch and return the raw body with `createAjaxResponse`:
+
+```js
+var href = c.getHref();
+if (href != null && href.indexOf("robots.txt") >= 0) {
+    return c.createAjaxResponse("User-agent: *\nAllow: /", false);
+}
+if (href != null && href.indexOf("sitemap.xml") >= 0) {
+    var body = buildSitemapXml();     // your string-builder function
+    return c.createAjaxResponse(body, false);
+}
+```
+
+`createAjaxResponse(bodyString, false)` returns the raw string — no JEXL rendering, no HTML wrapper.
+Put these checks BEFORE the action switch so they intercept the request unconditionally.
+
+**Unknown `.html` hrefs** — route to a 404 page (e.g. `frag = "common/notFound"`).
+**Non-`.html` hrefs** (token URLs and other opaque paths also hit the workflow) — fall through to the
+home/landing page, NOT a 404. Check `href.endsWith(".html")` to distinguish the two cases.
+
+---
+
 ## Debugging
 
 Use `c.debug()`, `c.debugData()`, `c.debugList()` freely during development (they output to the Pal

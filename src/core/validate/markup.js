@@ -11,6 +11,7 @@
 // Every finding is a full sentence with the fix and a skill pointer — built for the least
 // capable agent that will read it.
 const { WHITELIST, REQUIRED, ALWAYS_ALLOWED, VOID_ELEMENTS } = require("./cTagSpec");
+const { lintTagBalance } = require("./tagBalance");
 
 // Precompute newline offsets → O(log n) line lookup.
 function lineIndexer(src) {
@@ -202,6 +203,9 @@ function lintMarkup(rel, src) {
             }
         }
     }
+
+    // Tag-balance check (Check 1 — esign orphan-div incident).
+    findings.push(...lintTagBalance(rel, src));
 
     findings.sort((a, b) => a.line - b.line || a.rule.localeCompare(b.rule));
     return findings;

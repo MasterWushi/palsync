@@ -16,6 +16,7 @@ const path = require("path");
 const { lintWorkflowJs } = require("./workflowJs");
 const { lintMarkup } = require("./markup");
 const { lintDatasetDef } = require("./datasetDef");
+const { lintPalJson } = require("./palJson");
 
 const MARKUP_EXT = new Set([".html", ".htm", ".xhtml"]);
 
@@ -79,6 +80,11 @@ function validateWorkspace(workspaceDir, { only = null } = {}) {
         filesChecked++;
         findings.push(...lintDatasetDef(f.rel, src));
     }
+
+    // pal.json manifest check (Check 2 — silent-push-skip incident).
+    // Not scoped by `only` — a missing pal.json entry is a workspace-level problem regardless
+    // of which files changed, and the check is cheap (no file parsing).
+    findings.push(...lintPalJson(workspaceDir));
 
     findings.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
     const errors = findings.filter(f => f.severity === "error").length;

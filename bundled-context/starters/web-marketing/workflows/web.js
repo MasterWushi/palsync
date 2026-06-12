@@ -9,6 +9,30 @@ function run(controller)
     c = controller;
     payload = c.createPayload();
 
+    // robots.txt and sitemap.xml — intercept before the action switch.
+    // c.getHref() returns the raw request path (e.g. "/robots.txt").
+    // Return plain-text responses directly; no page needed.
+    var href = c.getHref();
+
+    if (href == "/robots.txt") {
+        return c.createAjaxResponse(
+            "User-agent: *\nAllow: /\nSitemap: https://YOUR-DOMAIN/sitemap.xml",
+            false
+        );
+    }
+
+    if (href == "/sitemap.xml") {
+        // Minimal sitemap. Extend with additional <url> blocks as the site grows.
+        // For a dynamic sitemap (pages from a dataset), build the XML string in a
+        // helper function and return it here.
+        var sitemapXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+            "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">" +
+              "<url><loc>https://YOUR-DOMAIN/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>" +
+            "</urlset>";
+        return c.createAjaxResponse(sitemapXml, false);
+    }
+
     switch (c.getAction()) {
         // Add page actions here as the site grows, one case per page:
         // case "getAbout":

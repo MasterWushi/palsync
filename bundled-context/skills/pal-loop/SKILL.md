@@ -84,3 +84,41 @@ A new session resumes by reading EXECUTION.md — nothing else is needed. Trust 
 any memory of prior sessions: statuses in the file are the truth. Re-run `pal_status` before
 the first push of a resumed session (the server may have moved; `pal_pull`/`pal_merge`
 handle it).
+
+---
+
+## Delegation recipe (proven)
+
+When dispatching a task to a subagent, the prompt MUST contain — in this order:
+
+1. **MANDATORY READS** — design-law and spec files first (SPEC.md, design tokens, brand rules),
+   then sibling files to clone patterns from (list by absolute path).
+2. **Copy is law** — approved copy quoted verbatim or pointed at (exact file + section). The
+   subagent ships it VERBATIM, no paraphrasing, no improvement.
+3. **Clone target** — name an existing file the subagent must clone markup/structure from.
+   Never describe a pattern you can point at; point at it.
+4. **HARD RULES block** — non-negotiable constraints, every time:
+   - XHTML: all void tags self-closed
+   - ASCII only — no named entities except `&amp;` `&lt;` `&gt;` `&quot;` `&apos;`
+   - No `<script>` inside fragments
+   - `pal.json` entries required for every new file
+   - Existing CSS classes only — do not invent class names
+5. **Required RETURN format** — the subagent must return:
+   - A traceability table: what shipped vs what was specified (spec item | shipped value | match)
+   - An explicit deviations line: "Deviations: none" or list each deviation with reason.
+
+---
+
+## Verify independently (non-negotiable)
+
+Never accept a subagent's self-report as truth. After every push:
+
+- Run `pal_fetch` on each touched page and grep the served HTML for the expected H1, section
+  heading, or CSS class. If the element isn't in the fetched HTML, it didn't ship.
+- Run `pal_validate` before push and read push output for the stray-file warning.
+- Open the preview for the human at every pause — the human eyeball is the design gate.
+  Tooling cannot replace visual sign-off.
+
+**Why:** subagents have over-claimed in practice — reporting elements that didn't exist in the
+served HTML, misreading pages, marking tasks done when verification wasn't run. The orchestrator
+owns truth; the subagent's self-report is a hypothesis, not a result.

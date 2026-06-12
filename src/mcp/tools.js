@@ -6,7 +6,7 @@ const { z } = require("zod");
 const { pull } = require("../core/pull");
 const { push } = require("../core/push");
 const { runTest } = require("../core/test");
-const { runPreview } = require("../core/preview");
+const { runPreview, fetchPagePath } = require("../core/preview");
 const { mergeWorkspace, formatMerge } = require("../core/merge");
 const { runSeoAudit, formatSeoAudit } = require("../core/seoAudit");
 const { syncDatasets } = require("../core/datasets");
@@ -203,6 +203,36 @@ const TOOLS = [
         }
     },
     {
+        name: "pal_fetch",
+        description: "Fetch ONE specific page from a WEB pal's test instance and return its served HTML — the verification primitive. " +
+            "Use it after every push that adds or changes a page: check the H1, check links resolved, check the right fragment rendered. " +
+            "A successful push does NOT prove a page renders (files missing from pal.json are silently skipped; routes can be wrong) — pal_fetch proves it. " +
+            "path is the page path relative to the site root, e.g. \"about.html\" or \"robots.txt\". Shows the LAST PUSHED version.",
+        inputShape: { path: z.string().describe("Page path relative to the site root, e.g. \"about.html\"") },
+        async run(ctx, { path } = {}) {
+            const res = await fetchPagePath(ctx.session, ctx.record.palGuid, path);
+            if (ctx.lifecycle) ctx.lifecycle.onActivity();
+            if (!res.fetched) {
+                return Object.assign(res, { message: "Could not fetch \"" + path + "\": " + res.reason + (res.validation ? "\n" + formatValidation(res.validation) : "") });
+            }
+            let filePath = null;
+            try {
+                filePath = pathMod.join(os.tmpdir(), "palsync-fetch-" + ctx.record.palGuid.replace(/[^A-Za-z0-9_-]/g, "") + ".html");
+                fs.writeFileSync(filePath, res.html, "utf8");
+            } catch (e) { /* best-effort */ }
+            const truncated = res.html.length > PREVIEW_INLINE_CAP;
+            const shown = truncated ? res.html.slice(0, PREVIEW_INLINE_CAP) : res.html;
+            const safe = Object.assign({}, res); delete safe.html;
+            return Object.assign(safe, {
+                htmlFile: filePath,
+                message: "Fetched " + path + " — status=" + res.status + " content-type=" + res.contentType +
+                    " title=" + JSON.stringify(res.title) + " size=" + res.bytes + " bytes" +
+                    (filePath ? "\n  Full body saved to: " + filePath : "") +
+                    "\n\n--- served body" + (truncated ? " (first " + PREVIEW_INLINE_CAP + " bytes — read the file for the rest)" : "") + " ---\n" + shown
+            });
+        }
+    },
+    {
         name: "pal_seo_audit",
         description: "Run an on-page SEO audit of a WEB pal's actual server-rendered page (the version last pushed). " +
             "Checks: title + meta description (presence/length), canonical, the 5 core og: tags with ABSOLUTE og:image/og:url, twitter:card, " +
@@ -345,6 +375,11 @@ const TOOLS = [
                         (res.skipped && res.skipped.length
                             ? "\n⚠ Skipped — these can't be created via palsync; make them in PalBuilder:\n" +
                               res.skipped.map(s => "   - " + s.type + "/" + s.file + " (" + s.reason + ")").join("\n")
+                            : "") +
+                        (res.strayCreatable && res.strayCreatable.length
+                            ? "\n\n🚨 WARNING: " + res.strayCreatable.length + " file(s) on disk were NOT pushed — they have no pal.json entry, so the server never receives them:\n" +
+                              res.strayCreatable.map(f => "   - " + f).join("\n") +
+                              "\nFix: add a matching entry to pal.json (copy an existing entry of the same type, e.g. a Page entry for pages/, a Fragment entry for fragments/, set string+filename to the file name), then push again. Until you do, these files exist only on disk."
                             : "") + skippedBlock + warnBlock
                 });
             }

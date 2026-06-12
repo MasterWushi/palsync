@@ -20,6 +20,31 @@ const drift = require("./drift");
 // rejection fails the WHOLE save transactionally (workflows: "Unknown workflow"; documents: need
 // a description + valid XML; fonts: rejected outright). Editing EXISTING ones is fine. CLAUDE.md
 // tells Claude not to create them — this is the backstop so a stray addition can't sink a push.
+// Creatable types: a file on disk in these folders with NO pal.json entry is NEVER pushed —
+// the #1 silent failure of the OBE smoke test (22 new pages "pushed OK" but absent). Push now
+// reports these loudly so the agent fixes pal.json instead of reporting false success.
+const CREATABLE = [
+    { key: "pages", folder: "pages" },
+    { key: "fragments", folder: "fragments" },
+    { key: "styles", folder: "styles" },
+    { key: "scripts", folder: "scripts" },
+    { key: "images", folder: "images" },
+    { key: "emails", folder: "emails" },
+    { key: "attachments", folder: "attachments" }
+];
+
+// Files on disk in creatable folders that have no pal.json entry → will NOT be pushed.
+function findStrayCreatable(pal, workspaceDir) {
+    const stray = [];
+    for (const t of CREATABLE) {
+        const manifest = new Set((((pal[t.key] && pal[t.key].entry)) || []).map(e => e.string));
+        let files = [];
+        try { files = fs.readdirSync(path.join(workspaceDir, t.folder)).filter(f => !f.startsWith(".") && isFile(path.join(workspaceDir, t.folder, f))); } catch (e) {}
+        for (const f of files) if (!manifest.has(f)) stray.push(t.folder + "/" + f);
+    }
+    return stray;
+}
+
 const UNCREATABLE = [
     { key: "workflows", folder: "workflows" },
     { key: "documents", folder: "documents" },
@@ -183,6 +208,7 @@ async function push(session, record, workspaceDir, { force = false, overrideLock
     // sink the whole push; report stray files of those types. Creatable types are never touched.
     const serverKnown = await fetchServerKnown(session, id);
     const skipped = guardUncreatableTypes(pal, workspaceDir, serverKnown);
+    const strayCreatable = findStrayCreatable(pal, workspaceDir);
     const injected = await pal.injectFileContent();
     const saveResp = await CloudPistonAPIManager.savePal(session, pal, id);
     const validation = normalizeValidation(saveResp);
@@ -208,7 +234,7 @@ async function push(session, record, workspaceDir, { force = false, overrideLock
     // server's validation notes so callers can show WHY (e.g. "Tag script is not allowed") instead
     // of a bare "unknown" — the cold test showed an opaque message cost real diagnosis time.
     return { pushed: success, refused: success ? undefined : "save-rejected",
-             forced: !!force, filesPushed: injected.length, validation,
+             forced: !!force, filesPushed: injected.length, strayCreatable, validation,
              newMarker: record.lastModifiedDate, skipped, lint, skippedValidation: skipValidation && lint.errors > 0,
              serverPaths: pushedPaths };
 }

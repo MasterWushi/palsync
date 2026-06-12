@@ -31,6 +31,7 @@ const USAGE = [
     "  palsync merge  [--keep-lock] [--dir <workspace>]            3-way merge local + server changes (keeps both where they don't collide)",
     "  palsync status [--dir <workspace>]                           Server drift, local changes, lock holder",
     "  palsync test   [--workflow console|web|transaction] [--no-preview] [--keep-lock] [--dir <ws>]",
+    "  palsync fetch <page>  Fetch ONE served page from the test instance (verify a route renders)",
     "                                                               Server-validate a workflow + open a live preview",
     "  palsync preview [--workflow console|web|transaction] [--keep-lock] [--dir <ws>]",
     "                                                               Render the pal (web: prints the HTML; console: opens a browser)",
@@ -71,6 +72,7 @@ function parseFlags(argv) {
         else if (a.startsWith("--datasets=")) flags.datasets = a.slice("--datasets=".length);
         else if (a === "--dir") { flags.dir = argv[++i]; if (!flags.dir) throw new Error("--dir requires a value"); }
         else if (a.startsWith("--dir=")) flags.dir = a.slice("--dir=".length);
+        else if (a.charAt(0) !== "-" && flags._positional === undefined) flags._positional = a;
         else throw new Error("Unknown flag for this subcommand: " + a + "\n\n" + USAGE);
     }
     return flags;
@@ -183,6 +185,17 @@ async function run(cmd, argv) {
             try { await lock.releaseByGuid(ctx.session, ctx.record.palGuid); } catch (e) { /* own next session reclaims */ }
         }
         return res.previewed ? 0 : 1;
+    }
+
+    if (cmd === "fetch") {
+        const pagePath = flags._positional || flags.path;
+        if (!pagePath) { console.error("Usage: palsync fetch <page-path>   e.g. palsync fetch about.html"); return 1; }
+        const res = await toolByName("pal_fetch").run(ctx, { path: pagePath });
+        console.log(res.message);
+        if (!flags.keepLock && ctx.session.lockInfo) {
+            try { await lock.releaseByGuid(ctx.session, ctx.record.palGuid); } catch (e) { /* own next session reclaims */ }
+        }
+        return res.fetched && res.status === 200 ? 0 : 1;
     }
 
     if (cmd === "seo-audit") {
