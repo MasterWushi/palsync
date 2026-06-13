@@ -74,9 +74,13 @@ async function runPreview(session, guid, record, workspaceDir, { workflow } = {}
         try { page = await fetchRendered(t.rawToken); }
         catch (e) { return { previewed: false, kind: "web", dirty, dirtyFiles, reason: "Failed to fetch the web preview: " + (e && e.message ? e.message : String(e)) }; }
         const isHtml = /html/i.test(page.contentType) || /<html|<!doctype/i.test(page.body);
+        // url MUST be the rawToken — that's the link that activates a session when opened in a
+        // browser. page.finalUrl is the post-redirect landing (e.g. webpals.cloudpiston.com/index.html)
+        // which needs the cookies that were absorbed during the fetch's redirect chain; opening it
+        // fresh hits "Web Pal Expired". Keep finalUrl as a debug field, not the user-facing URL.
         return {
             previewed: true, kind: "web", agentVisible: true,
-            url: page.finalUrl, status: page.status, contentType: page.contentType,
+            url: t.rawToken, finalUrl: page.finalUrl, status: page.status, contentType: page.contentType,
             title: titleOf(page.body), bytes: page.body.length, isHtml,
             html: page.body, dirty, dirtyFiles
         };
