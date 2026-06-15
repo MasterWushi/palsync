@@ -45,6 +45,28 @@ ended up with:
 palsync --version
 ```
 
+### `palsync --version` shows an old version after install
+
+You have **more than one Node installation** (e.g. Homebrew node *and* nvm/Hermes node), each with
+its own global `npm` prefix. `npm install -g` writes to *the prefix of whichever `npm` ran* — but
+your shell's PATH may resolve the `palsync` shim from a **different** prefix, so it keeps running an
+older copy. Diagnose:
+
+```sh
+which -a palsync                  # any line OTHER than the first is shadowed
+cat "$(npm root -g)/palsync/package.json" | grep version   # what npm just wrote
+```
+
+Fix by installing with the npm tied to the bin that actually wins:
+
+```sh
+"$(dirname "$(which palsync)")/../lib/node_modules/.bin/npm" install -g github:MasterWushi/palsync
+# or, plainly: invoke the matching npm directly, e.g.
+/opt/homebrew/bin/npm install -g github:MasterWushi/palsync   # for Homebrew node
+```
+
+Or uninstall the stale copy first (run the *winning* npm), then reinstall normally.
+
 ## Prerequisites
 
 - **Node.js 18 or newer is required up front** — install it first from https://nodejs.org/ (or your version manager). palsync runs on Node, so it can't install or upgrade Node for you: if your Node is too old it shows the exact upgrade command for your setup (nvm/fnm/volta/Homebrew) but **never changes your Node version automatically** — that's yours to run, since it can affect your other projects.
