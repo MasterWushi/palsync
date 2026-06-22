@@ -37,31 +37,51 @@ function normalizePal(p) {
     };
 }
 
-// Walk profile -> group -> pal with back support. Returns { profile, group, pal } or null
-// if the user cancels out.
+// Walk profile -> [open existing | create new] with back support.
+//   open:   profile -> group (single) -> pal   -> { mode:"open",   profile, group, pal }
+//   create: profile -> groups (1+)   -> details -> { mode:"create", profile, groups, details }
+// Returns null if the user cancels out. No mutations here — the orchestrator performs the
+// create (CreatePalFromBuilder) so this stays pure prompts + GET-list calls.
 async function runSelection(session, prompts) {
     let step = "profile";
-    let profile, group;
+    let profile, group, groups;
     while (true) {
         if (step === "profile") {
             const profiles = await listProfiles(session);
             const choice = await prompts.pickProfile(profiles);
             if (!choice) return null;
             profile = choice;
-            step = "group";
-        } else if (step === "group") {
-            const groups = await listGroups(session, profile.profileId);
-            const choice = await prompts.pickGroup(groups);
+            step = "mode";
+        } else if (step === "mode") {
+            const choice = await prompts.pickMode();
             if (choice === BACK) { step = "profile"; continue; }
+            if (!choice) return null;
+            step = choice === "create" ? "groups" : "group";
+        } else if (step === "group") {           // open existing — single group
+            const all = await listGroups(session, profile.profileId);
+            const choice = await prompts.pickGroup(all);
+            if (choice === BACK) { step = "mode"; continue; }
             if (!choice) return null;
             group = choice;
             step = "pal";
-        } else { // pal
+        } else if (step === "pal") {
             const pals = await listPals(session, profile.profileId, group.groupId);
             const choice = await prompts.pickPal(pals);
             if (choice === BACK) { step = "group"; continue; }
             if (!choice) return null;
-            return { profile, group, pal: normalizePal(choice) };
+            return { mode: "open", profile, group, pal: normalizePal(choice) };
+        } else if (step === "groups") {          // create new — one or more groups
+            const all = await listGroups(session, profile.profileId);
+            const choice = await prompts.pickGroups(all);
+            if (choice === BACK) { step = "mode"; continue; }
+            if (!choice || !choice.length) return null;
+            groups = choice;
+            step = "details";
+        } else { // details — name, description, category (desc/category default to name)
+            const choice = await prompts.pickNewPalDetails();
+            if (choice === BACK) { step = "groups"; continue; }
+            if (!choice) return null;
+            return { mode: "create", profile, groups, details: choice };
         }
     }
 }

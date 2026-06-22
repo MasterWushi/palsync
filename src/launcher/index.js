@@ -5,6 +5,7 @@
 const { loadClack } = require("../platform/uiPrompts");
 const { login } = require("../auth/credentials");
 const { runSelection } = require("./selection");
+const { createNewPal } = require("../core/createPal");
 const { selectionPrompts, driftPrompt } = require("./prompts");
 const agents = require("./agents");
 const workspace = require("./workspace");
@@ -33,9 +34,23 @@ async function run({
     const { session, cloudUrl } = await login({ prompts: loginPrompts });
     log("logged in: " + session.username + " @ " + cloudUrl + " (userId=" + session.userId + ")");
 
-    // 3. profile → group → pal
-    const sel = await runSelection(session, selPrompts);
+    // 3. profile → [open existing | create new]
+    let sel = await runSelection(session, selPrompts);
     if (!sel) { log("cancelled at selection"); return null; }
+
+    // Create mode: mint the pal now (server returns its guid), then fall through to the same
+    // pull + lock + setup path the open path uses — the new pal is just an empty one.
+    if (sel.mode === "create") {
+        log("creating pal: " + sel.details.name + " in " + sel.groups.length + " group(s)");
+        const created = await createNewPal(session, {
+            profileId: sel.profile.profileId,
+            groupIds: sel.groups.map(g => g.groupId),
+            name: sel.details.name,
+            description: sel.details.description,
+            category: sel.details.category
+        });
+        sel = { profile: sel.profile, pal: { guid: created.guid, name: created.name || sel.details.name } };
+    }
     log("selected pal: " + sel.pal.name + " (" + sel.pal.guid + ")");
 
     // 4. agent — an explicit --agent value resolves directly (skips the picker); otherwise fall

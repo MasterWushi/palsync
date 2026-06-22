@@ -22,6 +22,7 @@
     "LICENSE"
   ],
   "scripts": {
+    "test": "node --test",
     "ping": "node scripts/ping-test.js"
   },
   "dependencies": {

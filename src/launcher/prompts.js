@@ -32,20 +32,62 @@ async function autocompletePick(message, items, { back = false } = {}) {
 const selectionPrompts = {
     async pickProfile(profiles) {
         return autocompletePick(
-            "Step 1/3 · Select profile (type to filter)",
+            "Select profile (type to filter)",
             profiles.map(p => ({ title: p.profileName, value: p }))
         );
     },
+    // Open an existing pal, or create a new one. Esc goes back to the profile step.
+    async pickMode() {
+        const clack = await loadClack();
+        const v = await clack.select({
+            message: "What do you want to do?",
+            options: [
+                { value: "open", label: "Open an existing Pal" },
+                { value: "create", label: "Create a new Pal" }
+            ]
+        });
+        return clack.isCancel(v) ? BACK : v;
+    },
     async pickGroup(groups) {
         return autocompletePick(
-            "Step 2/3 · Select group (type to filter)",
+            "Select group (type to filter)",
             groups.map(g => ({ title: g.name, description: g.description || undefined, value: g })),
             { back: true }
         );
     },
+    // Create flow: one or more groups. clack multiselect has no in-list back affordance, so
+    // Esc/cancel maps to BACK (returns to the mode step), consistent with the other steps.
+    async pickGroups(groups) {
+        const clack = await loadClack();
+        const v = await clack.multiselect({
+            message: "Select one or more groups for the new pal (space to toggle, enter to confirm)",
+            options: groups.map(g => ({ value: g, label: g.name, hint: g.description || undefined })),
+            required: true
+        });
+        return clack.isCancel(v) ? BACK : v;
+    },
+    // Create flow: name (required) + description/category (blank defaults to the name).
+    async pickNewPalDetails() {
+        const clack = await loadClack();
+        const name = await clack.text({
+            message: "New pal name",
+            validate: (x) => (x && x.trim() ? undefined : "Name is required")
+        });
+        if (clack.isCancel(name)) return BACK;
+        const description = await clack.text({ message: "Description (blank = use the name)", placeholder: name });
+        if (clack.isCancel(description)) return BACK;
+        const category = await clack.text({ message: "Category (blank = use the name)", placeholder: name });
+        if (clack.isCancel(category)) return BACK;
+        const nm = name.trim();
+        return {
+            name: nm,
+            description: (description && description.trim()) || nm,
+            category: (category && category.trim()) || nm
+        };
+    },
     async pickPal(pals) {
         return autocompletePick(
-            "Step 3/3 · Select pal (type to filter)",
+            "Select pal (type to filter)",
             pals.map(p => ({ title: p.name, description: p.description || undefined, value: p })),
             { back: true }
         );
