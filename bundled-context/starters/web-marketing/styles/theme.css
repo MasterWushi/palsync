@@ -116,7 +116,5 @@ body {
 .footer-links a { color: var(--ink-soft); text-decoration: none; font-size: 0.875rem; }
 .footer-fine { margin-left: auto; color: var(--ink-muted); font-size: 0.8125rem; }
 
-/* ---- scroll-reveal (used with ../Scripts/reveal.js) ---- */
-.reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.5s var(--ease), transform 0.5s var(--ease); }
-.reveal.visible { opacity: 1; transform: none; }
-@media (prefers-reduced-motion: reduce) { .reveal { transform: none; transition: opacity 0.3s; } }
+/* ---- .reveal: visible by default (no JS dependency; the scroll-reveal script was removed) ---- */
+.reveal { opacity: 1; transform: none; }

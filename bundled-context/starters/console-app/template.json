@@ -6,7 +6,6 @@
     { "path": "fragments/navbar.html" },
     { "path": "fragments/dashboard.html" },
     { "path": "styles/theme.css" },
-    { "path": "scripts/app.js" },
     { "path": "workflows/console.js" }
   ]
 }

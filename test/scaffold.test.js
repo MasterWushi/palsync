@@ -31,11 +31,12 @@ test("console-app starter creates a workflow entry with the console workflowType
     fs.rmSync(ws, { recursive: true, force: true });
 });
 
-test("a manifest file missing from the starter is skipped, not a crash", () => {
-    const ws = tempWorkspace();
-    // console-app's manifest references scripts/app.js, which isn't shipped — must not throw.
-    const r = applyTemplate(ws, "console-app", { palName: "T" });
-    assert.ok(Array.isArray(r.skipped));
-    assert.ok(r.created.length > 0, "the rest of the starter still applied");
-    fs.rmSync(ws, { recursive: true, force: true });
+test("bundled starters apply cleanly — every manifest file exists (no skips)", () => {
+    for (const name of ["console-app", "web-marketing"]) {
+        const ws = tempWorkspace();
+        const r = applyTemplate(ws, name, { palName: "T" });
+        assert.deepEqual(r.skipped, [], name + " should have no skipped (missing) files");
+        assert.ok(r.created.length > 0, name + " created files");
+        fs.rmSync(ws, { recursive: true, force: true });
+    }
 });
