@@ -17,9 +17,12 @@ const lock = require("./lock");
 const drift = require("./drift");
 
 // Types that CANNOT be created via push: the server rejects a NEW entry of these types and the
-// rejection fails the WHOLE save transactionally (workflows: "Unknown workflow"; documents: need
-// a description + valid XML; fonts: rejected outright). Editing EXISTING ones is fine. CLAUDE.md
-// tells Claude not to create them — this is the backstop so a stray addition can't sink a push.
+// rejection fails the WHOLE save transactionally (documents: need a description + valid XML;
+// fonts: rejected outright). Editing EXISTING ones is fine. CLAUDE.md tells Claude not to create
+// them — this is the backstop so a stray addition can't sink a push.
+// NOTE: workflows were once listed here, but that was a Base64 artifact, not a real ban —
+// Workflow.content is a byte[] and raw text sank the push. New workflows ARE creatable; see
+// guardWorkflows (it only strips malformed ones missing workflowType).
 // Creatable types: a file on disk in these folders with NO pal.json entry is NEVER pushed —
 // the #1 silent failure of the OBE smoke test (22 new pages "pushed OK" but absent). Push now
 // reports these loudly so the agent fixes pal.json instead of reporting false success.
@@ -46,10 +49,13 @@ function findStrayCreatable(pal, workspaceDir) {
 }
 
 const UNCREATABLE = [
-    { key: "workflows", folder: "workflows" },
     { key: "documents", folder: "documents" },
     { key: "fonts", folder: "fonts" }
 ];
+
+// Valid workflowType numbers (from the platform's workflow-type enum). A new workflow with no
+// workflowType is the one malformed case that still sinks the whole transactional save.
+const WORKFLOW_TYPES = new Set([2, 3, 4, 5, 7, 9, 11, 12, 14, 15]);
 
 function isFile(p) { try { return fs.statSync(p).isFile(); } catch (e) { return false; } }
 
@@ -118,6 +124,7 @@ async function fetchServerKnown(session, palId) {
         const sp = resp && resp.pal;
         if (!sp) return null;
         const setOf = (k) => new Set((((sp[k] && sp[k].entry)) ? (Array.isArray(sp[k].entry) ? sp[k].entry : [sp[k].entry]) : []).map(e => e.string));
+        // workflows: needed by guardWorkflows (new-vs-existing); documents/fonts: by guardUncreatableTypes.
         return { workflows: setOf("workflows"), documents: setOf("documents"), fonts: setOf("fonts") };
     } catch (e) { return null; }
 }
@@ -144,6 +151,27 @@ function guardUncreatableTypes(pal, workspaceDir, serverKnown) {
         try { files = fs.readdirSync(path.join(workspaceDir, t.folder)).filter(f => isFile(path.join(workspaceDir, t.folder, f))); } catch (e) {}
         for (const f of files) if (!manifest.has(f) && !known.has(f)) skipped.push({ type: t.key, file: f, reason: "stray file — not pushed (use PalBuilder)" });
     }
+    return skipped;
+}
+
+// New workflows ARE pushable (content is base64-encoded by injectFileContent, which is what the
+// server's byte[] field needs). The one remaining hazard: a new workflow with no workflowType
+// makes the server reject it and fail the WHOLE transactional save. So strip + report only those
+// malformed new entries; well-formed new workflows and all edits to existing ones go through.
+// Mutates pal. Returns [{type, file, reason}].
+function guardWorkflows(pal, serverKnown) {
+    const skipped = [];
+    const node = pal.workflows && pal.workflows.entry;
+    if (!serverKnown || !Array.isArray(node)) return skipped; // no baseline -> let the server arbitrate
+    const known = serverKnown.workflows || new Set();
+    pal.workflows.entry = node.filter(e => {
+        if (known.has(e.string)) return true;                 // existing workflow — edit is fine
+        const wt = e.Workflow && e.Workflow.workflowType;
+        if (WORKFLOW_TYPES.has(Number(wt))) return true;      // well-formed new workflow
+        skipped.push({ type: "workflows", file: e.string,
+            reason: "new workflow missing/invalid workflowType — set it in pal.json (web=9, console=7, library=4, transaction=2)" });
+        return false;
+    });
     return skipped;
 }
 
@@ -204,10 +232,12 @@ async function push(session, record, workspaceDir, { force = false, overrideLock
     // 3) inject from disk + save (body pal.id == lock header id, matching the extension invariant)
     const pal = await Pal.fromPath(workspaceDir);
     pal.id = id;
-    // Backstop: strip any NEW entry of an uncreatable type (workflows/documents/fonts) so it can't
-    // sink the whole push; report stray files of those types. Creatable types are never touched.
+    // Backstop: strip NEW entries of uncreatable types (documents/fonts) so they can't sink the
+    // whole push; report stray files. Plus strip only MALFORMED new workflows (no workflowType) —
+    // well-formed new workflows now push. Creatable types are never touched.
     const serverKnown = await fetchServerKnown(session, id);
-    const skipped = guardUncreatableTypes(pal, workspaceDir, serverKnown);
+    const skipped = guardUncreatableTypes(pal, workspaceDir, serverKnown)
+        .concat(guardWorkflows(pal, serverKnown));
     const strayCreatable = findStrayCreatable(pal, workspaceDir);
     const injected = await pal.injectFileContent();
     const saveResp = await CloudPistonAPIManager.savePal(session, pal, id);
@@ -239,4 +269,4 @@ async function push(session, record, workspaceDir, { force = false, overrideLock
              serverPaths: pushedPaths };
 }
 
-module.exports = { push, buildSaveTask, normalizeValidation };
+module.exports = { push, buildSaveTask, normalizeValidation, guardWorkflows };

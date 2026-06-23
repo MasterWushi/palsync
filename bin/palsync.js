@@ -89,8 +89,8 @@ const agentFlag = parseAgentFlag(argv);
     const result = await run({ withDesign, withSeo, agent: agentFlag, log: (m) => clack.log.step(m) });
     if (!result) { clack.cancel("Cancelled."); process.exit(1); }
     clack.log.info(
-        "Creatable here: pages, fragments, scripts, emails, images, styles, attachments.\n" +
-        "Workflows, documents, fonts, and datasets/dataviews must be made in PalBuilder (palsync can still edit them). See README."
+        "Creatable here: pages, fragments, scripts, workflows, emails, images, styles, attachments.\n" +
+        "Documents, fonts, and dataviews/data/datalists are PalBuilder-only (palsync edits them; datasets via sync-datasets). See README."
     );
     clack.outro("Workspace ready at " + result.workspaceDir + " — handing off to " + result.agent.label + ".");
     // If we launched the agent, keep the process alive until it exits so the terminal is handed over.

@@ -236,6 +236,7 @@ below are about **creating** new ones. (All confirmed by testing against a live 
 | Type | Notes |
 |------|-------|
 | Pages, Fragments, Scripts | you'll be asked **console or web** (sets `palType`) |
+| Workflows | you'll be asked the **type** (sets `workflowType`: web=9, console=7, library=4, transaction=2, …) |
 | Emails, Images, Styles, Attachments | no extra metadata needed |
 
 **Create in PalBuilder first** — these are **PalBuilder-only** to create (the server rejects creating
@@ -243,13 +244,13 @@ them via push, and the rejection fails the whole push). **Once they exist, palsy
 
 | Type | Why |
 |------|-----|
-| Workflows | unknown workflows are rejected (fixed workflow slots) |
 | Documents | require a description and valid XML content; a plain file is rejected |
 | Fonts | font creation is rejected |
 | Dataviews, data, datalists | provisioned in PalBuilder; palsync preserves them on pull/push but never creates or deletes them |
 
 If Claude is asked to create one of the PalBuilder-only types, it will tell you to make it in PalBuilder first.
-A safety guard in push also excludes any stray new file of an uncreatable type so it can't sink a push.
+A safety guard in push also excludes any stray new file of an uncreatable type (and any new workflow
+missing its `workflowType`) so it can't sink a push.
 
 **Datasets are the exception — palsync CAN create and update them** via `pal_sync_datasets`: define the
 schema in `datasets/<name>.json` + a `pal.json` entry, then sync to provision the table. A normal sync
