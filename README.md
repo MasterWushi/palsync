@@ -177,9 +177,9 @@ palsync scaffold --template console-app --dir <ws>   # or apply to an existing w
   dashboard fragment with stat cards and a designed empty state, `run()` workflow skeleton.
 
 Starters never overwrite existing files, substitute the pal's name into the placeholders, and pass
-`palsync validate` with zero findings out of the box. **Workflows** are content-filled only when the
-pal already has the slot (push can't create workflow slots); otherwise the template is saved as a
-`.template` reference with instructions.
+`palsync validate` with zero findings out of the box. **Workflows** are created like any other file —
+the starter ships a `run()` skeleton with the right `workflowType` (derived from the pal type), and
+push provisions it.
 
 ### Choosing an agent
 

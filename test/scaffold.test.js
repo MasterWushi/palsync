@@ -1,0 +1,41 @@
+"use strict";
+// Scaffold tests: workflows are now a creatable type (file + pal.json entry with workflowType),
+// and a missing template file must not crash the whole apply. Uses the bundled console-app
+// starter into a temp workspace. Pure, no network. Run: npm test.
+const { test } = require("node:test");
+const assert = require("node:assert");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { applyTemplate } = require("../src/core/scaffold");
+
+function tempWorkspace() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "palsync-scaffold-"));
+    fs.writeFileSync(path.join(dir, "pal.json"), JSON.stringify({
+        layout: { name: "T" },
+        pages: { entry: [] }, fragments: { entry: [] }, styles: { entry: [] }, workflows: { entry: [] }
+    }));
+    return dir;
+}
+
+test("console-app starter creates a workflow entry with the console workflowType (7)", () => {
+    const ws = tempWorkspace();
+    const r = applyTemplate(ws, "console-app", { palName: "T" });
+    const pal = JSON.parse(fs.readFileSync(path.join(ws, "pal.json"), "utf8"));
+    const wf = pal.workflows.entry.find(e => e.string === "console.js");
+    assert.ok(wf, "expected a workflows entry for console.js");
+    assert.equal(wf.Workflow.workflowType, 7);               // palTypeConsole -> 7
+    assert.equal(wf.Workflow.contentType, "text/javascript");
+    assert.ok(fs.existsSync(path.join(ws, "workflows", "console.js")), "workflow file written to disk");
+    assert.ok(r.created.includes("workflows/console.js"), "workflow reported as created");
+    fs.rmSync(ws, { recursive: true, force: true });
+});
+
+test("a manifest file missing from the starter is skipped, not a crash", () => {
+    const ws = tempWorkspace();
+    // console-app's manifest references scripts/app.js, which isn't shipped — must not throw.
+    const r = applyTemplate(ws, "console-app", { palName: "T" });
+    assert.ok(Array.isArray(r.skipped));
+    assert.ok(r.created.length > 0, "the rest of the starter still applied");
+    fs.rmSync(ws, { recursive: true, force: true });
+});

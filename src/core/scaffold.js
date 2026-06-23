@@ -5,10 +5,9 @@
 // guarantees the structure, the design floor, and the SEO floor from the first push.
 //
 // Platform rules this respects (all empirically confirmed):
-//   - Pages/fragments/scripts/styles CAN be created via push (file + pal.json entry).
-//   - WORKFLOWS CANNOT be created via push (fixed slots, server-rejected). A template's
-//     workflow is applied as a CONTENT OVERWRITE only when the pal already has that slot;
-//     otherwise the file is written for reference and reported as needing a PalBuilder slot.
+//   - Pages/fragments/scripts/styles/workflows CAN be created via push (file + pal.json entry).
+//     Workflows need a workflowType — derived here from the template's palType (web=9, console=7,
+//     transaction=2). (The old "workflows are fixed slots" rule was a Base64 artifact, not real.)
 //   - Existing files are NEVER overwritten (starters fill empty/stub pals; report skips).
 //   - {{PAL_NAME}} in text files is replaced with the pal's name.
 //
@@ -28,8 +27,16 @@ const ENTRY_TYPES = {
     scripts: { key: "scripts", sub: "Script", contentType: "text/javascript", palTyped: true, extra: { bookmarks: "" } },
     styles: { key: "styles", sub: "Style", contentType: "text/css", palTyped: false, extra: {} },
     images: { key: "images", sub: "Image", contentType: "image/png", palTyped: false, extra: {} },
-    workflows: { key: "workflows", sub: "Workflow", palTyped: false, extra: {} } // content-overwrite only
+    workflows: { key: "workflows", sub: "Workflow", contentType: "text/javascript", palTyped: false, workflowTyped: true, extra: {} }
 };
+
+// Workflow type number for a pal type (the create-pal wizard's mapping). Web pals get web
+// workflows, console pals console workflows, etc.; default web.
+function workflowTypeFor(palType) {
+    if (palType === "palTypeConsole") return 7;
+    if (palType === "palTypeTransaction") return 2;
+    return 9; // palTypeWeb / default
+}
 
 function listTemplates() {
     let names = [];
@@ -82,32 +89,14 @@ function applyTemplate(workspaceDir, name, { palName } = {}) {
 
         const srcAbs = path.join(dir, rel);
         const destAbs = path.join(workspaceDir, ...rel.split("/"));
+        // A manifest entry whose source file is missing must not crash the whole scaffold —
+        // skip it and report so the rest of the starter still applies.
+        if (!fs.existsSync(srcAbs)) { skipped.push({ rel, reason: "template file missing from the starter — skipped (report to maintainers)" }); continue; }
         const raw = fs.readFileSync(srcAbs, "utf8");
         const content = substitute(raw, vars);
 
-        // WORKFLOWS: content-overwrite only when the slot exists (push cannot create slots).
-        if (folder === "workflows") {
-            const node = pal.workflows && pal.workflows.entry;
-            const slot = Array.isArray(node) && node.find(e => e && e.string === entryString);
-            if (slot) {
-                if (fs.existsSync(destAbs) && fs.readFileSync(destAbs, "utf8").trim().length > 200) {
-                    // A real workflow already lives here — don't clobber working logic.
-                    workflows.push({ rel, applied: false, reason: "the pal already has substantive code in " + entryString + " — left untouched (the template skeleton is only for empty/stub workflows)" });
-                } else {
-                    fs.mkdirSync(path.dirname(destAbs), { recursive: true });
-                    fs.writeFileSync(destAbs, content, "utf8");
-                    workflows.push({ rel, applied: true, reason: "slot \"" + entryString + "\" exists — template workflow content applied (an EDIT, which push supports)" });
-                }
-            } else {
-                const refAbs = destAbs + ".template";
-                fs.mkdirSync(path.dirname(refAbs), { recursive: true });
-                fs.writeFileSync(refAbs, content, "utf8");
-                workflows.push({ rel, applied: false, reason: "this pal has NO workflow slot named \"" + entryString + "\" and push cannot create one. The template was saved as " + path.basename(refAbs) + " for reference — create the workflow in PalBuilder first, then copy the content in and push" });
-            }
-            continue;
-        }
-
-        // Everything else: create file + manifest entry, never overwrite.
+        // Create file + manifest entry, never overwrite (pages/fragments/scripts/styles/images/
+        // workflows all flow through here — workflows now push like any other creatable type).
         if (fs.existsSync(destAbs)) { skipped.push({ rel, reason: "file already exists — left untouched" }); continue; }
         fs.mkdirSync(path.dirname(destAbs), { recursive: true });
         fs.writeFileSync(destAbs, content, "utf8");
@@ -119,10 +108,11 @@ function applyTemplate(workspaceDir, name, { palName } = {}) {
         if (!pal[type.key].entry.some(e => e && e.string === entryString)) {
             const body = Object.assign({ content: "", contentType: type.contentType, filename: entryString }, type.extra);
             if (type.palTyped) body.palType = palType;
+            if (type.workflowTyped) body.workflowType = workflowTypeFor(palType);
             const entry = { string: entryString };
             entry[type.sub] = body;
             pal[type.key].entry.push(entry);
-            entriesAdded.push(folder + "/" + entryString);
+            entriesAdded.push(folder + "/" + entryString + (type.workflowTyped ? " (workflowType " + body.workflowType + ")" : ""));
         }
     }
 
