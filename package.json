@@ -1,8 +1,9 @@
 {
   "name": "palsync",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "Terminal launcher + MCP sync server connecting a CloudPiston PalBuilder pal to Claude Code (login, pull, lock, push). Includes the headless palpush deploy CLI.",
   "type": "commonjs",
+  "repository": { "type": "git", "url": "git+https://github.com/MasterWushi/palsync.git" },
   "bin": {
     "palsync": "./bin/palsync.js",
     "palsync-mcp": "./bin/palsync-mcp.js",
