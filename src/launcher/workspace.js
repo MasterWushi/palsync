@@ -165,13 +165,13 @@ async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false,
     // + pal.json) — inject() reads the user's existing CLAUDE.md and merges its managed block
     // in place.
     log("injecting CLAUDE.md + skills" + (withDesign ? " (with design system)" : "") + (withSeo ? " (with SEO)" : "") +
-        (agent === "codex" ? " + AGENTS.md/.agents (Codex)" : ""));
+        (agent === "codex" ? " + AGENTS.md/.agents (Codex)" : agent === "pi" ? " + AGENTS.md/.agents (Pi)" : ""));
     const injected = await contextInject.inject(workspaceDir, { palName: sel.pal.name, withDesign, withSeo, agent });
 
     await palsyncfile.write(workspaceDir, record);
 
     // register the MCP server for the chosen agent.
-    let reg;
+    let reg = {};
     if (agent === "codex") {
         log("registering palsync MCP server with Codex (codex mcp add)");
         reg = await registerCodex(workspaceDir);
@@ -185,6 +185,10 @@ async function setup({ session, cloudUrl, sel, workspaceDir, withDesign = false,
         } else {
             log("  ⚠ `codex mcp add` failed (" + (reg.stderr || "unknown") + ") — register manually:\n      " + reg.command);
         }
+    } else if (agent === "pi") {
+        // Pi has no MCP — it drives palsync through the headless CLI (palsync push|pull|status|…),
+        // which AGENTS.md tells it to use. Nothing to register.
+        log("Pi uses the palsync CLI (no MCP server) — AGENTS.md carries the sync instructions");
     } else {
         log("registering palsync MCP server (.mcp.json)");
         reg = await register(workspaceDir);

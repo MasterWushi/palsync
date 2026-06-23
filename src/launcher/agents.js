@@ -1,21 +1,35 @@
 "use strict";
-// Agent registry + launch. v1 ships Claude Code only, but the registry is structured so other
-// MCP-capable agents (Cline, Cursor) can slot in later (decision 3) — we only ever show agents
-// we can actually fulfil. Launch spawns the agent CLI in the workspace, inheriting the terminal
-// (portable handoff); on Windows we go through the shell so `claude.cmd` resolves.
-const { spawn } = require("child_process");
+// Agent registry + launch. The picker lists the agents actually INSTALLED on this machine
+// (command found on PATH); whichever one you pick is launched in the workspace with the right
+// context injected. Launch spawns the agent CLI inheriting the terminal (portable handoff); on
+// Windows we go through the shell so `claude.cmd` resolves.
+const { spawn, spawnSync } = require("child_process");
 
+// `mcp` = how palsync registers its sync server for this agent: "claude" (.mcp.json),
+// "codex" (`codex mcp add`), or false (no MCP — the agent drives palsync via its shell CLI).
+// `key` is the --agent flag value.
 const AGENTS = [
-    // `available` controls the interactive picker only. Claude Code is the default, menu-listed
-    // agent; Codex is reachable via the explicit `--agent codex` flag (resolve()) but not yet
-    // surfaced in the picker. `key` is the --agent flag value.
-    { id: "claude-code", key: "claude", label: "Claude Code", command: "claude", args: [], available: true },
-    { id: "codex", key: "codex", label: "Codex", command: "codex", args: [], available: false }
-    // future: { id: "cline", ..., available: false }, { id: "cursor", ..., available: false }
+    { id: "claude-code", key: "claude", label: "Claude Code", command: "claude", args: [], mcp: "claude" },
+    { id: "codex", key: "codex", label: "Codex", command: "codex", args: [], mcp: "codex" },
+    { id: "pi", key: "pi", label: "Pi", command: "pi", args: [], mcp: false }
+    // future: { id: "cline", ... }, { id: "cursor", ... }
 ];
 
+// Is a command resolvable on PATH? (`which` on POSIX, `where` on Windows.)
+function commandOnPath(cmd) {
+    const probe = process.platform === "win32" ? "where" : "which";
+    try {
+        const r = spawnSync(probe, [cmd], { stdio: "ignore" });
+        return r.status === 0;
+    } catch (e) { return false; }
+}
+
+// Agents installed on this machine. If none are detected (unexpected — palsync was launched
+// somehow), fall back to the full registry so the picker is never empty; launch() then surfaces
+// a clear "not on PATH" message.
 function available() {
-    return AGENTS.filter(a => a.available);
+    const installed = AGENTS.filter(a => commandOnPath(a.command));
+    return installed.length ? installed : AGENTS.slice();
 }
 
 // Resolve an explicit --agent value ("claude" | "codex" | an id) to a descriptor, or null.
