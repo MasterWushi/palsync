@@ -33,6 +33,9 @@ temp/
 scripts/
 SPEC_*
 
+# vendored palbuilder platform source — local contract reference only, not part of the CLI
+com/
+
 # CCE (code-context-engine)
 # CCE local cache (per-machine, not for version control)
 .cce/

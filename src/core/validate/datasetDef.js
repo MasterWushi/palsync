@@ -3,30 +3,36 @@
 // reject the save — chiefly an invalid `fieldType`. The server error is cryptic ("Dataset X has
 // invalid type for field Y"); this catches it OFFLINE with the valid types spelled out.
 //
-// SEVERITY = warn, never error. The KNOWN_TYPES set is confirmed from live pals but is NOT proven
-// exhaustive (PalBuilder has graded integer types — Tiny/Small/Medium unsigned integer — so a
-// larger/signed variant we haven't sampled may be valid). Warning, not blocking, means we guide
-// dumb models toward the right type without ever falsely blocking a valid one. The server stays
-// the authority, and a bad type that slips through now surfaces a clear save-rejection message.
+// SEVERITY = warn, never error. KNOWN_TYPES is the authoritative DatasetField type set, taken
+// verbatim from the platform source (com/contractpal/pal/DatasetField.java — the TYPE_* string
+// constants, "do not change ... serialized in all pals"). It is exhaustive. Warning, not blocking,
+// keeps the server as the semantic authority while guiding dumb models toward the right strings;
+// a bad type that slips through still surfaces a clear save-rejection message.
 
-// Confirmed-valid field types, sampled across many live pals (ISR, MealPlanner, Keystone, …).
+// Valid field types — exact strings from DatasetField.java's TYPE_* constants.
 const KNOWN_TYPES = new Set([
-    "Primary key",
-    "String", "Char",
+    "String", "Text", "Medium text", "Char",
+    "Date", "DateOnly", "DateTimeMS",
     "Boolean",
-    "Date", "DateOnly",
-    "File",
-    "Tiny unsigned integer", "Small unsigned integer", "Medium unsigned integer"
+    "Tiny integer", "Small integer", "Medium integer", "Number", "Big Number",
+    "Tiny unsigned integer", "Small unsigned integer", "Medium unsigned integer", "Unsigned integer", "Big unsigned integer",
+    "Decimal",
+    "Encrypted",
+    "File", "File Encrypted", "Remote File", "Remote File Encrypted",
+    "Primary key", "Pal id", "Transaction id", "Profile id",
+    "Pal id auto populate", "Transaction id auto populate", "Profile id auto populate"
 ]);
 
-// Common WRONG guesses → the PalBuilder type to suggest. Lowercased keys.
+// Common WRONG guesses → the real PalBuilder type to suggest. Lowercased, whitespace-stripped keys.
+// "Number" is the general integer (=TYPE_INT); "Big Number" the 64-bit (=TYPE_BIGINT); "Decimal"
+// the fixed/floating type — NOT the unsigned variants (those drop sign and fractional digits).
 const SUGGESTIONS = {
-    "integer": "Small unsigned integer", "int": "Small unsigned integer", "number": "Small unsigned integer",
-    "numeric": "Small unsigned integer", "long": "Medium unsigned integer", "bigint": "Medium unsigned integer",
-    "float": "Small unsigned integer", "double": "Small unsigned integer", "decimal": "Small unsigned integer",
+    "integer": "Number", "int": "Number", "number": "Number", "numeric": "Number",
+    "long": "Big Number", "bigint": "Big Number",
+    "float": "Decimal", "double": "Decimal", "decimal": "Decimal",
     "bool": "Boolean", "boolean": "Boolean",
-    "text": "String", "varchar": "String", "char": "Char",
-    "datetime": "Date", "timestamp": "Date", "time": "Date",
+    "text": "String", "string": "String", "varchar": "String", "longtext": "Text", "mediumtext": "Medium text", "char": "Char",
+    "datetime": "Date", "timestamp": "Date", "time": "Date", "date": "Date",
     "pk": "Primary key", "id": "Primary key", "primarykey": "Primary key", "uuid": "Primary key"
 };
 
