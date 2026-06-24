@@ -1,7 +1,7 @@
 "use strict";
 // Inject bundled PalBuilder context into a pal workspace WITHOUT clobbering user content.
 //   - .claude/skills/palbuilder-frontend|backend/SKILL.md  (copied from bundle; palsync-owned)
-//   - .claude/skills/design-core/...                       (OPT-IN via --with-design; default off)
+//   - .claude/skills/design-build|design-system-init/SKILL.md (always injected; design skills)
 //   - CLAUDE.palsync.md  = the proven pal-rules CLAUDE.md (palsync-owned; written fresh)
 //   - CLAUDE.md          = the user's file, with a clearly-marked managed block inserted or
 //                          refreshed in place. Everything outside the markers is preserved.
@@ -14,19 +14,14 @@ const BUNDLE_DIR = path.join(__dirname, "..", "..", "bundled-context");
 
 // Always-on skills — injected every session (backend/bugfix sessions want these too).
 // pal-spec/pal-loop ride along always: skills cost no context until the agent opens them,
-// and any session may be asked to "spec this" or "resume the build".
-const ALWAYS_ON_SKILLS = ["palbuilder-frontend", "palbuilder-backend", "pal-spec", "pal-loop"];
-
-// Design skills — OPT-IN (--with-design; default off) so non-UI sessions stay lean. Each entry
-// names a skill dir under bundled-context/skills/ and any companion asset files (paths may be
-// nested, e.g. references/) that must ship alongside its SKILL.md. The folder name is the key —
-// the SKILL.md frontmatter name (e.g. "palbuilder-design") is independent and not used here.
-const DESIGN_SKILLS = [
-    { name: "design-core", assets: ["references/components.md"] }
-];
+// and any session may be asked to "spec this" or "resume the build". The design skills
+// (design-system-init sets a project's visual system; design-build enforces it) ride along
+// too — a skill costs no context until opened, and any UI session should reach for them.
+const ALWAYS_ON_SKILLS = ["palbuilder-frontend", "palbuilder-backend", "palbuilder-jobs-http",
+    "pal-spec", "pal-loop", "design-system-init", "design-build"];
 
 // SEO skills — OPT-IN (--with-seo; default off). For WEB pals (public, crawled pages); console
-// sessions don't need them. Pairs naturally with --with-design when building a marketing site.
+// sessions don't need them. Pairs naturally with the design skills when building a marketing site.
 const SEO_SKILLS = [
     { name: "seo-core", assets: [] }
 ];
@@ -55,7 +50,8 @@ function syncSection(palName, { cli = false } = {}) {
         conn,
         "",
         "**BEFORE writing any pal code, read the skill files** in `.claude/skills/` (`palbuilder-frontend`",
-        "for pages/fragments/c: tags, `palbuilder-backend` for workflow .js). PalBuilder is a proprietary",
+        "for pages/fragments/c: tags, `palbuilder-backend` for workflow .js, `palbuilder-jobs-http` for",
+        "background jobs / server-side HTTP / long-running work). PalBuilder is a proprietary",
         "dialect you do NOT know from training — your defaults (object literals, `let`/`const`, normal",
         "HTML habits) produce code that saves but then FAILS to compile or render. The skills are the",
         "rules; follow them literally.",
@@ -162,7 +158,7 @@ function syncSection(palName, { cli = false } = {}) {
         "  or a column is removed, and always warn the user it deletes all data first.",
         "- `dataviews`, `data`, `datalists` are still PalBuilder-provisioned — push/pull preserve them, don't create them.",
         "",
-        "PalBuilder coding rules: see `@CLAUDE.palsync.md` and the skills in `.claude/skills/` (`palbuilder-frontend`, `palbuilder-backend`)."
+        "PalBuilder coding rules: see `@CLAUDE.palsync.md` and the skills in `.claude/skills/` (`palbuilder-frontend`, `palbuilder-backend`, `palbuilder-jobs-http`)."
     ].join("\n");
 }
 
@@ -202,9 +198,8 @@ async function readIfExists(p) {
 // The effective skill SET for a session, defined ONCE (always-on + opted-in sets).
 // Normalized to { name, assets } so every set copies the same way. Per-agent code only varies
 // the DESTINATION root — never the skill list.
-function effectiveSkills(withDesign, withSeo = false) {
+function effectiveSkills(withSeo = false) {
     return ALWAYS_ON_SKILLS.map(name => ({ name, assets: [] }))
-        .concat(withDesign ? DESIGN_SKILLS : [])
         .concat(withSeo ? SEO_SKILLS : []);
 }
 
@@ -222,13 +217,12 @@ async function copySkillSet(workspaceDir, rootDir, skills) {
 }
 
 // Inject everything into workspaceDir. Returns a summary of what was written.
-//   withDesign (default false) gates the opt-in design skills.
 //   agent ("claude" default | "codex") decides which destinations get written. The Claude path
 //   (.claude/skills + CLAUDE.md + CLAUDE.palsync.md) is ALWAYS written and byte-for-byte unchanged;
 //   Codex ADDITIONALLY gets the same skills at the .agents/ open standard + an AGENTS.md carrying
 //   the same managed instruction block (Claude Code does not read .agents/ or AGENTS.md — verified).
-async function inject(workspaceDir, { palName, withDesign = false, withSeo = false, agent = "claude" } = {}) {
-    const skills = effectiveSkills(withDesign, withSeo);
+async function inject(workspaceDir, { palName, withSeo = false, agent = "claude" } = {}) {
+    const skills = effectiveSkills(withSeo);
 
     // (A) CLAUDE path — always written, unchanged.
     await copySkillSet(workspaceDir, ".claude", skills);
@@ -256,8 +250,6 @@ async function inject(workspaceDir, { palName, withDesign = false, withSeo = fal
         agent,
         skills: skillNames.map(name => path.join(".claude/skills", name, "SKILL.md")),
         agentSkills: (agent === "codex" || agent === "pi") ? skillNames.map(name => path.join(".agents/skills", name, "SKILL.md")) : [],
-        designInjected: withDesign,
-        designSkills: withDesign ? DESIGN_SKILLS.map(d => d.name) : [],
         seoInjected: withSeo,
         seoSkills: withSeo ? SEO_SKILLS.map(s => s.name) : [],
         claudePalsync: "CLAUDE.palsync.md",
@@ -266,4 +258,4 @@ async function inject(workspaceDir, { palName, withDesign = false, withSeo = fal
     };
 }
 
-module.exports = { inject, mergeClaudeMd, managedBlock, syncSection, BEGIN, END, BUNDLE_DIR, ALWAYS_ON_SKILLS, DESIGN_SKILLS, SEO_SKILLS, effectiveSkills };
+module.exports = { inject, mergeClaudeMd, managedBlock, syncSection, BEGIN, END, BUNDLE_DIR, ALWAYS_ON_SKILLS, SEO_SKILLS, effectiveSkills };

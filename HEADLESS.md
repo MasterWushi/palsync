@@ -49,7 +49,7 @@ agent's first tool call).
 
 ```sh
 # By name (preferred — never hardcode GUIDs):
-palsync setup --pal "ISR SEO Dashboard" --dir ~/pals/isr --with-design
+palsync setup --pal "ISR SEO Dashboard" --dir ~/pals/isr
 
 # Disambiguate a duplicate name, or pin by GUID:
 palsync setup --pal "Quote Game" --profile Gamgee --group Default --dir ~/pals/quote

@@ -93,7 +93,6 @@ Now talk to Claude. Ask for a change, then say *"push it."*
 | Flag | Alias | What it does |
 |------|-------|--------------|
 | `--version` | `-v` | Print the palsync build version and exit. |
-| `--with-design` | `-d` | Inject the **Nimblewire design system** (`design-core`) into the workspace for UI work. |
 | `--with-seo` | | Inject the **SEO skill** (`seo-core`) for WEB pals — the page-head recipe, the absolute-og-URL and non-ASCII-attribute traps, JSON-LD, and the `pal_seo_audit` verify loop. |
 | `--agent <name>` | | Choose the coding agent: `claude` (default) or `codex`. |
 
@@ -133,19 +132,11 @@ tools — same drift guards, same preserve-on-pull, same uncreatable-type backst
 - **The MCP server never exits on its own.** Idle releases only the pal lock (a courtesy to
   teammates); the next tool call re-locks. The server lives exactly as long as Claude Code does.
 
-The PalBuilder coding skills (`palbuilder-frontend`, `palbuilder-backend`) are **always** injected.
-The **design skills are opt-in (default off)** to keep Claude's context lean for backend and bugfix
-sessions that don't touch UI. Pass `--with-design` (or `-d`) when you're building or styling an
-interface — it adds `design-core` (the token architecture, component recipes, and anti-slop rules)
-plus its `reference-theme.css` to the workspace's `.claude/skills/`.
-
-```sh
-palsync                 # always-on PalBuilder skills only (lean)
-palsync --with-design   # + the Nimblewire design system, for UI work
-```
-
-> This will grow to `design-marketing` / `design-app` / `design-enterprise` once those skills exist;
-> `--with-design` will inject the design set as a whole.
+The PalBuilder coding skills (`palbuilder-frontend`, `palbuilder-backend`) are **always** injected,
+and so are the **design skills**: `design-system-init` (interview the user + reference images into a
+project `DESIGN_SYSTEM.md` + `COMPONENTS.md`) and `design-build` (enforce that system while building
+UI, with a render-and-critique review gate). They cost no context until the agent opens them, so they
+ride along every session — reach for them on any UI work.
 
 ## Spec-to-ship workflow (autonomous builds)
 
@@ -167,7 +158,7 @@ Start a new pal from a correct, designed, SEO-sound skeleton instead of a blank 
 
 ```sh
 palsync scaffold --list                              # see the available templates
-palsync setup --pal "My New Pal" --template web-marketing --with-design --with-seo
+palsync setup --pal "My New Pal" --template web-marketing --with-seo
 palsync scaffold --template console-app --dir <ws>   # or apply to an existing workspace
 ```
 
@@ -188,7 +179,6 @@ palsync defaults to **Claude Code**. Pass `--agent codex` to use **Codex** inste
 ```sh
 palsync                 # Claude Code (default): skills → .claude/skills/, instructions → CLAUDE.md
 palsync --agent codex   # Codex: skills → .agents/skills/ + AGENTS.md, MCP via `codex mcp add`, launches codex
-palsync --agent codex --with-design   # Codex + the design system
 ```
 
 With `--agent codex`, palsync writes the same skills to the cross-agent **Agent Skills** open

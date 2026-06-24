@@ -474,6 +474,29 @@ ajax.addPayload(payload);   // AJAX
 page.addPayload(payload);   // Full-page
 ```
 
+### Binding a list to the template — `addDataList`, not `set`
+
+`set/setBoolean/setInt` are **scalars only**. A queried DataList is attached with its own
+name via `payload.addDataList(list)`; the template iterates it with
+`<c:list name="<thatName>" id="row">`:
+
+```js
+payload.addDataList(fetchAllClients());                          // -> <c:list name="clients">
+payload.addDataList(ds.getRecords(filter).copy("moneyPages"));   // copy(name) sets the binding name
+```
+
+### String-mode `<c:list>` (no DataList)
+
+Build a delimited string and `set` it; the template parses it with `list=` + `row-delim` +
+`col-delim` (the consuming side is in `palbuilder-frontend`):
+
+```js
+var sb = c.createBuffer();
+sb.append(title + "|" + badge + "|" + cssClass);   // cols joined by "|"
+sb.append("~");                                     // rows joined by "~"
+payload.set("aiReadinessRows", sb.toString());      // <c:list list="${aiReadinessRows}" row-delim="~" col-delim="|">
+```
+
 ---
 
 ## Request

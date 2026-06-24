@@ -24,7 +24,7 @@ state change, immediately — if the session dies mid-task, the next session mus
    Commit after every completed task — this is the rollback mechanism. (Local only; never push
    this git repo anywhere.)
 4. Read the skills the tasks will need: palbuilder-frontend (+ palbuilder-backend for
-   workflows, design-core for UI, seo-core for web pages). Read them BEFORE coding, once.
+   workflows, design-build for UI, seo-core for web pages). Read them BEFORE coding, once.
 5. Run `pal_status`. If the server is newer than the last pull, run `pal_pull` first.
 
 ## The task cycle (repeat until done or blocked)

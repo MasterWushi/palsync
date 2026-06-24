@@ -148,6 +148,30 @@ Use EL-style `${variable}` syntax for all server-injected values:
 <div style="background-color: ${settings.colorHeader};">
 ```
 
+### EL operators
+
+Used heavily in `test=`, `c:if`, `c:when`, `selected=`. Note **`eq` compares as strings** —
+a boolean column reads `${x eq 'true'}`, not `${x}`.
+
+| Operator | Meaning | Real example |
+|---|---|---|
+| `eq` / `ne` | equals / not-equals (string compare) | `${r.result eq 'FAIL'}`, `${active eq 'clients'}` |
+| `empty` | true if null or empty string/list | `${empty audits}` |
+| `!empty` | not empty (the most common guard) | `${!empty r.remediationHint}`, `${!empty moneyPages}` |
+| `!` | negation | `${!f.isInvited}` |
+| `and` / `or` | boolean combine | `${a eq 'x' and b eq 'y'}` |
+| `gt` / `lt` / `ge` / `le` | numeric compare | `${count gt 0}` |
+
+```html
+<c:if test="${!empty topCritical}"> ... </c:if>
+<c:when test="${r.result eq 'PASS'}"> ... </c:when>
+<div test="${empty progressError}"> ...still running... </div>
+```
+
+Property access is dot-notation (`${a.completedAt}`, `${r.reqId}`); delimited string-mode
+lists use `.get('col0')` (see `c:list`). No ternary / arithmetic / formatter calls are
+available — do display formatting in the workflow and bind the finished string.
+
 ---
 
 ## Tag Reference

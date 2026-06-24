@@ -93,7 +93,7 @@ created: <date>   approved: <date or pending>
      button labels, status names. -->
 
 ## 4. Design direction
-- Base: design-core house style (Editorial Warmth) | dark | brand override
+- Base: project DESIGN_SYSTEM.md (from design-system-init) | dark | brand override
 - Accent: <hex>  Fonts: <names or "house">
 - Composition notes: <per-page: hero style, rhythm break, anything the user asked for>
 - References: <urls/screenshots if any>
@@ -166,5 +166,5 @@ Mark honestly — a cheap model struggling on a frontier task costs more than fr
 
 - It does not build anything. The companion **pal-loop** skill executes EXECUTION.md.
 - It does not re-teach PalBuilder/design/SEO rules — the palbuilder-frontend,
-  palbuilder-backend, design-core, and seo-core skills own those. The spec REFERENCES them.
+  palbuilder-backend, design-build, and seo-core skills own those. The spec REFERENCES them.
 - It never invents facts: no made-up stats, prices, testimonials, or claims. Ask, or omit.

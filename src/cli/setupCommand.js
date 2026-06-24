@@ -6,7 +6,7 @@
 // its own harness (OpenCode / Codex / Claude Code / Hermes) to the palsync MCP server.
 //
 //   palsync setup --pal "<name>"   [--guid <guid>] [--dir <dir>] [--cloud <url>] [--user <name>]
-//                 [--profile <p>] [--group <g>] [--with-design] [--agent claude|codex]
+//                 [--profile <p>] [--group <g>] [--agent claude|codex]
 //                 [--overwrite-local] [--json]
 //
 // Auth is headless via credentialStore (CP_PASS / PALSYNC_PASSWORD_<…> / keychain). The pal is
@@ -34,7 +34,6 @@ const USAGE = [
     "  --user <username>    account (default: env CP_USER, else the single keychain account)",
     "  --profile <name>     narrow by profile name (disambiguates a duplicate pal name)",
     "  --group <name>       narrow by group name",
-    "  --with-design        inject the design system skills",
     "  --with-seo           inject the SEO skill (for WEB pals — public, crawled pages)",
     "  --template <name>    apply a starter template after the pull (web-marketing, console-app; `palsync scaffold --list`)",
     "  --agent claude|codex which agent's MCP registration to write (default: claude)",
@@ -47,13 +46,12 @@ const USAGE = [
 
 function parse(argv) {
     const f = { pal: undefined, guid: undefined, dir: undefined, cloud: undefined, user: undefined,
-                profile: undefined, group: undefined, withDesign: false, withSeo: false, template: undefined, agent: "claude",
+                profile: undefined, group: undefined, withSeo: false, template: undefined, agent: "claude",
                 overwriteLocal: false, json: false, help: false };
     const need = (i, name) => { const v = argv[i + 1]; if (v === undefined) throw new Error(name + " requires a value"); return v; };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === "--help" || a === "-h") f.help = true;
-        else if (a === "--with-design" || a === "-d") f.withDesign = true;
         else if (a === "--with-seo") f.withSeo = true;
         else if (a === "--template") { f.template = need(i, "--template"); i++; }
         else if (a === "--overwrite-local") f.overwriteLocal = true;
@@ -128,7 +126,7 @@ async function run(argv) {
     const sel = { profile: { profileId: resolved.profileId }, group: { groupId: resolved.groupId },
                   pal: { guid: resolved.guid, name: resolved.name, lastModifiedDate: resolved.lastModifiedDate } };
 
-    const result = await workspace.setup({ session, cloudUrl, sel, workspaceDir, withDesign: flags.withDesign, withSeo: flags.withSeo, agent: flags.agent, onDrift, log });
+    const result = await workspace.setup({ session, cloudUrl, sel, workspaceDir, withSeo: flags.withSeo, agent: flags.agent, onDrift, log });
 
     // Optional starter template: applied AFTER the pull so it can see what the pal already has
     // (existing files are never overwritten; workflow content fills only empty/stub slots).
@@ -153,7 +151,7 @@ async function run(argv) {
         }, null, 2));
     } else {
         console.log("\nWorkspace ready: " + workspaceDir);
-        console.log("  pulled " + result.pulledFiles + " code files + " + result.dataFiles + " data/schema files; skills injected" + (flags.withDesign ? " (with design)" : "") + ".");
+        console.log("  pulled " + result.pulledFiles + " code files + " + result.dataFiles + " data/schema files; skills injected.");
         console.log("  Connect your agent's MCP client to the palsync server with env PALSYNC_WORKSPACE=" + workspaceDir);
         console.log("  (Claude Code: a .mcp.json was written here. OpenCode/Codex/Hermes: see the headless docs.)");
         console.log("  Auth: set CP_PASS in the agent's environment so the MCP server can authenticate headless.");
