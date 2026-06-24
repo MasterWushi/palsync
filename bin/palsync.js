@@ -6,6 +6,7 @@
 const preflight = require("../src/preflight");
 const { loadClack } = require("../src/platform/uiPrompts");
 const { run } = require("../src/launcher/index");
+const agents = require("../src/launcher/agents");
 const pkg = require("../package.json");
 
 // --version / -v: print the build and exit (works regardless of Node/Claude prereqs, so QA and
@@ -59,7 +60,7 @@ if (argv[0] === "help" || argv.includes("--help") || argv.includes("-h")) {
         "  palsync setup --pal \"<name>\"   headless workspace creation (no prompts; for autonomous/agent boxes)\n" +
         "  palsync push|pull|status|test|preview|validate|sync-datasets   headless ops for a workspace (no MCP/agent needed)\n" +
         "  palsync upgrade [--check]   self-update to the latest release (installs the newest git tag)\n" +
-        "  palsync --agent codex   use Codex instead of Claude Code\n" +
+        "  palsync --agent codex|pi   use Codex or Pi instead of Claude Code (default: claude)\n" +
         "  palsync --version       print the build\n\n" +
         require("../src/cli/syncCommands").USAGE + "\n"
     );
@@ -69,9 +70,10 @@ if (argv[0] === "help" || argv.includes("--help") || argv.includes("-h")) {
 // --with-seo: opt in to injecting the SEO skill (seo-core) for WEB pal work (public, crawled pages).
 const withSeo = argv.includes("--with-seo");
 
-// --agent <claude|codex>: choose the coding agent. Default Claude Code (and, when the flag is
+// --agent <claude|codex|pi>: choose the coding agent. Default Claude Code (and, when the flag is
 // absent, the interactive picker still runs — agentFlag stays undefined). Threaded through
 // preflight (which agent's binary to check) and run() → setup() (injection + MCP destinations).
+// Validated against the agents registry (single source of truth) so new agents need no change here.
 function parseAgentFlag(args) {
     let val;
     const i = args.indexOf("--agent");
@@ -79,11 +81,13 @@ function parseAgentFlag(args) {
     else { const eq = args.find(a => a.startsWith("--agent=")); if (eq) val = eq.slice("--agent=".length); }
     if (val === undefined) return undefined; // no flag → default flow (interactive picker)
     val = String(val).toLowerCase();
-    if (val !== "claude" && val !== "codex") {
-        process.stderr.write("Unknown --agent '" + val + "'. Use: claude (default) or codex.\n");
+    const agent = agents.resolve(val);
+    if (!agent) {
+        const keys = agents.AGENTS.map(a => a.key).join(", ");
+        process.stderr.write("Unknown --agent '" + val + "'. Use one of: " + keys + " (default: claude).\n");
         process.exit(1);
     }
-    return val;
+    return agent.key;
 }
 const agentFlag = parseAgentFlag(argv);
 

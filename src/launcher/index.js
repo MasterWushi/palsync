@@ -54,11 +54,11 @@ async function run({
     log("selected pal: " + sel.pal.name + " (" + sel.pal.guid + ")");
 
     // 4. agent — an explicit --agent value resolves directly (skips the picker); otherwise fall
-    //    back to the interactive pick (Claude Code default). Codex is reachable only via the flag.
+    //    back to the interactive pick (Claude Code default). Codex/Pi are reachable via the flag.
     let agent;
     if (agentKey) {
         agent = agents.resolve(agentKey);
-        if (!agent) throw new Error("Unknown agent '" + agentKey + "'. Use --agent claude or --agent codex.");
+        if (!agent) throw new Error("Unknown agent '" + agentKey + "'. Use one of: " + agents.AGENTS.map(a => a.key).join(", ") + ".");
     } else {
         agent = await agents.pick(pickAgent);
         if (!agent) { log("cancelled at agent"); return null; }

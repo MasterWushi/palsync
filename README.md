@@ -94,7 +94,7 @@ Now talk to Claude. Ask for a change, then say *"push it."*
 |------|-------|--------------|
 | `--version` | `-v` | Print the palsync build version and exit. |
 | `--with-seo` | | Inject the **SEO skill** (`seo-core`) for WEB pals — the page-head recipe, the absolute-og-URL and non-ASCII-attribute traps, JSON-LD, and the `pal_seo_audit` verify loop. |
-| `--agent <name>` | | Choose the coding agent: `claude` (default) or `codex`. |
+| `--agent <name>` | | Choose the coding agent: `claude` (default), `codex`, or `pi`. |
 
 ## Headless subcommands (no MCP server, no agent)
 
@@ -174,11 +174,12 @@ push provisions it.
 
 ### Choosing an agent
 
-palsync defaults to **Claude Code**. Pass `--agent codex` to use **Codex** instead:
+palsync defaults to **Claude Code**. Pass `--agent codex` or `--agent pi` to use **Codex** or **Pi** instead:
 
 ```sh
 palsync                 # Claude Code (default): skills → .claude/skills/, instructions → CLAUDE.md
 palsync --agent codex   # Codex: skills → .agents/skills/ + AGENTS.md, MCP via `codex mcp add`, launches codex
+palsync --agent pi      # Pi: skills → .agents/skills/ + AGENTS.md (CLI flavor — no MCP), launches pi
 ```
 
 With `--agent codex`, palsync writes the same skills to the cross-agent **Agent Skills** open
@@ -189,6 +190,10 @@ and launches `codex` in the workspace. The Claude Code paths (`.claude/skills/`,
 built on the open Agent Skills standard, this generalizes to other agents as they adopt it. If the
 `codex` CLI isn't installed, palsync still prepares the workspace and prints the exact manual
 registration + launch commands rather than failing.
+
+With `--agent pi`, palsync writes the same `.agents/skills/` + `AGENTS.md` as Codex, but the
+`AGENTS.md` carries the **CLI flavor** (it tells Pi to drive sync through `palsync push|pull|validate|…`)
+because Pi has **no MCP server** — there's nothing to register, and `pi` is launched in the workspace.
 
 ## MCP tools (Claude calls these for you)
 

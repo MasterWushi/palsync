@@ -119,6 +119,11 @@ codex mcp add palsync --env PALSYNC_WORKSPACE=/home/you/pals/isr --env CP_USER=y
 command + env above. Hermes connects to any MCP server; it owns the model (OpenRouter / Anthropic /
 DeepSeek / local) and the human-approval gateway (Telegram, etc.).
 
+**Pi** — `palsync setup --agent pi` (or `palsync --agent pi`) prepares the workspace with the
+`.agents/skills/` + `AGENTS.md` open standard and launches `pi`. Pi has **no MCP server** — it drives
+sync through the shell-out subcommands below, which its `AGENTS.md` instructs it to use. Nothing to
+register.
+
 ### Shell-out (no MCP)
 
 Every operation is also a headless CLI subcommand against a workspace dir — useful for scripts and

@@ -6,7 +6,7 @@
 // its own harness (OpenCode / Codex / Claude Code / Hermes) to the palsync MCP server.
 //
 //   palsync setup --pal "<name>"   [--guid <guid>] [--dir <dir>] [--cloud <url>] [--user <name>]
-//                 [--profile <p>] [--group <g>] [--agent claude|codex]
+//                 [--profile <p>] [--group <g>] [--agent claude|codex|pi]
 //                 [--overwrite-local] [--json]
 //
 // Auth is headless via credentialStore (CP_PASS / PALSYNC_PASSWORD_<…> / keychain). The pal is
@@ -36,7 +36,7 @@ const USAGE = [
     "  --group <name>       narrow by group name",
     "  --with-seo           inject the SEO skill (for WEB pals — public, crawled pages)",
     "  --template <name>    apply a starter template after the pull (web-marketing, console-app; `palsync scaffold --list`)",
-    "  --agent claude|codex which agent's MCP registration to write (default: claude)",
+    "  --agent claude|codex|pi  which agent's context/MCP to write (default: claude; pi uses the CLI, no MCP)",
     "  --overwrite-local    if the workspace has un-pushed local edits, overwrite them (default: refuse)",
     "  --json               machine-readable result",
     "",
