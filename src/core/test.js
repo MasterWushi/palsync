@@ -38,6 +38,17 @@ function normalizeValidation(resp) {
     return Array.isArray(list) ? list : [list];
 }
 
+// Server-level messages (resp.messages) are SEPARATE from per-rule validationResults: they carry
+// whole-test failures like "Pal is not a Web Pal". The CLI used to ignore them and print "No
+// validation notes", hiding the real cause — so always surface them. Returns [{ message, type }].
+function normalizeMessages(resp) {
+    const m = resp && resp.messages;
+    if (!m || m === "") return [];
+    const list = m["com.contractpal.Message"];
+    if (!list) return [];
+    return (Array.isArray(list) ? list : [list]).map(x => ({ message: x && x.message, type: x && x.type }));
+}
+
 // Which workflow engines does this pal actually have? Returns [{ kind, endpoint, files: [...] }].
 function availableWorkflows(serverPal) {
     const entries = (serverPal && serverPal.workflows && serverPal.workflows.entry) || [];
@@ -95,6 +106,7 @@ async function runTest(session, guid, { kind, workflowName } = {}) {
 
     const resp = await CloudPistonAPIManager.testWorkflow(session, palId, chosen.endpoint);
     const validation = normalizeValidation(resp);
+    const messages = normalizeMessages(resp);
     const success = !!(resp && resp.success);
     const validated = !!(resp && resp.validated);
     const profiles = (resp && resp.profileList && resp.profileList["com.contractpal.pal.ProfileInfo"]) || [];
@@ -109,7 +121,7 @@ async function runTest(session, guid, { kind, workflowName } = {}) {
 
     return {
         ran: true, kind: chosen.kind, endpoint: chosen.endpoint, success, validated,
-        validation, profiles: profiles.map(p => ({ name: p.profileName, id: p.profileId })),
+        validation, messages, profiles: profiles.map(p => ({ name: p.profileName, id: p.profileId })),
         availableKinds: avail.map(a => a.kind),
         // rawToken = the unmodified resp.token. For WEB it's a directly-fetchable URL on
         // webpals.cloudpiston.com (no auth needed — verified live). _previewUrl carries cp-auth
@@ -119,4 +131,4 @@ async function runTest(session, guid, { kind, workflowName } = {}) {
     };
 }
 
-module.exports = { runTest, availableWorkflows, buildPreviewUrl, normalizeValidation, TYPE_NUM, KIND_ENDPOINT };
+module.exports = { runTest, availableWorkflows, buildPreviewUrl, normalizeValidation, normalizeMessages, TYPE_NUM, KIND_ENDPOINT };

@@ -87,22 +87,37 @@ function extractCreated(resp) {
     return { id: info.id, guid: guid, name: info.name };
 }
 
+// Fetch the profile's activation keys as [{ name, value }, ...].
+async function listKeys(session, profileId) {
+    const keysResp = await CloudPistonAPIManager.getKeysForBuilder(session, profileId);
+    return extractKeys(keysResp);
+}
+
+// Pick a sensible default key when the caller doesn't choose one. Developer keys are
+// entitlement-limited — notably they CANNOT run Web/Marketing workflows — and they are
+// often returned first, so blindly taking keys[0] mints web pals that can never validate.
+// Prefer the first NON-developer key; fall back to keys[0] only if every key is a dev key.
+function chooseDefaultKey(keys) {
+    if (!keys || !keys.length) return null;
+    return keys.find(k => k && k.name && !/developer/i.test(k.name)) || keys[0];
+}
+
 // Create the pal and return { id, guid, name }. profileId is sent as a header; groupIds in
 // the body. No lock (the pal does not exist yet). When no activationKeyId is supplied, fetch
-// the profile's keys and use the first (the create-pal wizard's default).
+// the profile's keys and pick a sensible default (a non-developer key — see chooseDefaultKey).
 async function createNewPal(session, { profileId, groupIds, name, description, category, activationKeyId }) {
     if (!profileId) throw new Error("createPal: profileId is required");
     if (!activationKeyId) {
-        const keysResp = await CloudPistonAPIManager.getKeysForBuilder(session, profileId);
-        const keys = extractKeys(keysResp);
-        if (!keys.length) {
-            throw new Error("No activation keys available for this profile (GetKeysForBuilder): " + JSON.stringify(keysResp));
+        const keys = await listKeys(session, profileId);
+        const chosen = chooseDefaultKey(keys);
+        if (!chosen) {
+            throw new Error("No activation keys available for this profile (GetKeysForBuilder).");
         }
-        activationKeyId = keys[0].value;
+        activationKeyId = chosen.value;
     }
     const palInfoEx = buildPalInfoEx({ name, description, category, groupIds, activationKeyId });
     const resp = await CloudPistonAPIManager.createPal(session, profileId, palInfoEx);
     return extractCreated(resp);
 }
 
-module.exports = { buildPalInfoEx, extractKeys, createNewPal, extractCreated };
+module.exports = { buildPalInfoEx, extractKeys, listKeys, chooseDefaultKey, createNewPal, extractCreated };

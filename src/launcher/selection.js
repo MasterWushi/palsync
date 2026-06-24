@@ -4,6 +4,7 @@
 // transient id, stable GUID, name, and lastModifiedDate (the drift marker). Prompts are
 // injectable (real UI in launcher/prompts.js) so the flow is testable headlessly.
 const { CloudPistonAPIManager } = require("../../lib/apiManager");
+const { listKeys } = require("../core/createPal");
 const { timestampText } = require("../core/resolve");
 
 const BACK = "__back__";
@@ -39,12 +40,12 @@ function normalizePal(p) {
 
 // Walk profile -> [open existing | create new] with back support.
 //   open:   profile -> group (single) -> pal   -> { mode:"open",   profile, group, pal }
-//   create: profile -> groups (1+)   -> details -> { mode:"create", profile, groups, details }
+//   create: profile -> groups (1+) -> details -> key -> { mode:"create", profile, groups, details, activationKey }
 // Returns null if the user cancels out. No mutations here — the orchestrator performs the
 // create (CreatePalFromBuilder) so this stays pure prompts + GET-list calls.
 async function runSelection(session, prompts) {
     let step = "profile";
-    let profile, group, groups;
+    let profile, group, groups, details;
     while (true) {
         if (step === "profile") {
             const profiles = await listProfiles(session);
@@ -77,11 +78,23 @@ async function runSelection(session, prompts) {
             if (!choice || !choice.length) return null;
             groups = choice;
             step = "details";
-        } else { // details — name, description, category (desc/category default to name)
+        } else if (step === "details") { // name, description, category (desc/category default to name)
             const choice = await prompts.pickNewPalDetails();
             if (choice === BACK) { step = "groups"; continue; }
             if (!choice) return null;
-            return { mode: "create", profile, groups, details: choice };
+            details = choice;
+            step = "key";
+        } else { // key — entitlements vary per key (Developer keys can't run Web workflows) and
+                 // the keys API doesn't expose them, so the human picks. One key -> use it silently.
+            const keys = await listKeys(session, profile.profileId);
+            if (!keys.length) throw new Error("No activation keys available for this profile (GetKeysForBuilder).");
+            if (keys.length === 1) {
+                return { mode: "create", profile, groups, details, activationKey: keys[0].value };
+            }
+            const choice = await prompts.pickActivationKey(keys);
+            if (choice === BACK) { step = "details"; continue; }
+            if (!choice) return null;
+            return { mode: "create", profile, groups, details, activationKey: choice };
         }
     }
 }

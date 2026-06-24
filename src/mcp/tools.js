@@ -150,8 +150,14 @@ const TOOLS = [
             const verdict = res.validated
                 ? "✅ " + res.kind + " workflow VALIDATED on the server."
                 : "❌ " + res.kind + " workflow did NOT validate.";
+            // Server-level messages (e.g. "Pal is not a Web Pal") explain a whole-test failure that
+            // never shows up in per-rule validation notes — surface them or the real cause is lost.
+            const serverMsgs = (res.messages || []).filter(m => m && m.message);
+            const msgText = serverMsgs.length
+                ? "Server message(s):\n" + serverMsgs.map(m => "   - " + (m.type ? m.type + ": " : "") + m.message).join("\n") + "\n"
+                : "";
             const message = "Tested " + ctx.record.palName + " (" + res.kind + ").\n" +
-                verdict + "\n" + formatValidation(res.validation) + "\n" + previewMsg +
+                verdict + "\n" + msgText + formatValidation(res.validation) + "\n" + previewMsg +
                 (res.availableKinds.length > 1 ? "\n(testable engines on this pal: " + res.availableKinds.join(", ") + ")" : "");
             // Strip the credential URL before returning — defense in depth.
             const safe = Object.assign({}, res); delete safe._previewUrl;
@@ -368,6 +374,9 @@ const TOOLS = [
                 const skippedBlock = res.skippedValidation
                     ? "\n\n⚠ You pushed past " + res.lint.errors + " validation ERROR(s) with skipValidation — the pal may not compile/render in PalBuilder:\n" + formatLint(res.lint, { context: "validate" })
                     : "";
+                const webBlock = res.webRegistered
+                    ? "\n\n🌐 Registered \"" + res.webRegistered + "\" as the pal's web workflow (this makes it a Web Pal so it can render/preview). Run pal_pull to sync the registration into pal.json."
+                    : "";
                 return Object.assign(res, {
                     message: "Pushed " + res.filesPushed + " files" + (res.forced ? " (forced past drift)" : "") +
                         ". save " + (res.pushed ? "OK" : "FAILED") + ". marker=" + res.newMarker + ".\n" +
@@ -380,7 +389,7 @@ const TOOLS = [
                             ? "\n\n🚨 WARNING: " + res.strayCreatable.length + " file(s) on disk were NOT pushed — they have no pal.json entry, so the server never receives them:\n" +
                               res.strayCreatable.map(f => "   - " + f).join("\n") +
                               "\nFix: add a matching entry to pal.json (copy an existing entry of the same type, e.g. a Page entry for pages/, a Fragment entry for fragments/, set string+filename to the file name), then push again. Until you do, these files exist only on disk."
-                            : "") + skippedBlock + warnBlock
+                            : "") + skippedBlock + warnBlock + webBlock
                 });
             }
             if (res.refused === "drift") {

@@ -3,7 +3,7 @@
 // The live round-trip is scripts/create-pal-probe.js --verify (creates a real pal).
 const { test } = require("node:test");
 const assert = require("node:assert");
-const { buildPalInfoEx, extractCreated, extractKeys } = require("../src/core/createPal");
+const { buildPalInfoEx, extractCreated, extractKeys, chooseDefaultKey } = require("../src/core/createPal");
 
 const FIXED = new Date(Date.UTC(2026, 5, 20, 14, 30, 5, 0));   // 2026-06-20 14:30:05 UTC
 
@@ -70,6 +70,20 @@ test("extractKeys: parses the GetKeysForBuilder customObject NameValue list", ()
     assert.equal(keys.length, 2);
     assert.deepEqual(keys[0], { name: "** Developer Activation Key I **", value: "AAA" });
     assert.deepEqual(extractKeys({ success: false }), []);
+});
+
+test("chooseDefaultKey: prefers a non-Developer key (Developer keys can't run Web workflows)", () => {
+    // The exact ordering that bit macroweek-web: the Developer key comes first.
+    const keys = [
+        { name: "** Developer Activation Key I **", value: "AAA" },
+        { name: "Normal Key", value: "BBB" }
+    ];
+    assert.equal(chooseDefaultKey(keys).value, "BBB");
+    // All-developer profile: fall back to the first key rather than returning nothing.
+    assert.equal(chooseDefaultKey([{ name: "** Developer Activation Key I **", value: "AAA" }]).value, "AAA");
+    // Empty / missing.
+    assert.equal(chooseDefaultKey([]), null);
+    assert.equal(chooseDefaultKey(undefined), null);
 });
 
 test("extractCreated: throws on failure or missing guid", () => {

@@ -47,7 +47,8 @@ async function run({
             groupIds: sel.groups.map(g => g.groupId),
             name: sel.details.name,
             description: sel.details.description,
-            category: sel.details.category
+            category: sel.details.category,
+            activationKeyId: sel.activationKey
         });
         sel = { profile: sel.profile, pal: { guid: created.guid, name: created.name || sel.details.name } };
     }

@@ -85,6 +85,22 @@ const selectionPrompts = {
             category: (category && category.trim()) || nm
         };
     },
+    // Create flow: choose the activation key. Entitlements vary per key (Developer keys lack the
+    // Web/Marketing workflow) and the keys API doesn't expose them, so the human picks. The cursor
+    // defaults to the first non-Developer key, since that's the one that can run web pals.
+    async pickActivationKey(keys) {
+        const clack = await loadClack();
+        const recommended = keys.find(k => k && k.name && !/developer/i.test(k.name)) || keys[0];
+        const v = await clack.select({
+            message: "Select the activation key (Developer keys can't run Web/Marketing workflows)",
+            initialValue: recommended.value,
+            options: keys.map(k => ({
+                value: k.value,
+                label: k.name + (k === recommended ? "  (recommended)" : "")
+            }))
+        });
+        return clack.isCancel(v) ? BACK : v;
+    },
     async pickPal(pals) {
         return autocompletePick(
             "Select pal (type to filter)",
