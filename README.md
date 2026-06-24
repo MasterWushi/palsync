@@ -27,22 +27,31 @@ silently clobber someone else's work.
 npm install -g github:MasterWushi/palsync
 ```
 
-The **same command installs and updates** — re-run it to pull the latest commit. Installs the global
-`palsync` command (plus `palsync-mcp`, which the agent launches automatically, and `palpush`, a
-headless deploy CLI). **No build step** — the OS-keychain dependency ships prebuilt.
+That command installs the global `palsync` command (plus `palsync-mcp`, which the agent launches
+automatically, and `palpush`, a headless deploy CLI). **No build step** — the OS-keychain dependency
+ships prebuilt.
 
-If a re-install doesn't pick up the newest version, force a clean fetch:
+**To update, run `palsync upgrade`** — it checks the latest GitHub release tag and, if newer, reinstalls
+from that immutable tag:
 
 ```sh
-npm install -g github:MasterWushi/palsync --force
+palsync upgrade          # update to the latest release tag (no-op if already current)
+palsync upgrade --check  # report whether an update exists, without installing
 ```
 
-npm can serve a **cached** copy of a git dependency, so an update may silently reinstall the old
-commit; `--force` bypasses the cache and guarantees you get the newest commit. Confirm the build you
-ended up with:
+Why a subcommand and not a plain reinstall: `npm install -g github:<repo>` re-uses npm's **cached**
+resolution of the default branch, so a plain reinstall often silently keeps the old build. `palsync
+upgrade` installs an immutable tag (`github:…#vX.Y.Z`) — a ref npm hasn't cached — so the update
+actually lands. Confirm the build you ended up with:
 
 ```sh
 palsync --version
+```
+
+If you ever need to force a clean reinstall by hand, `--force` bypasses npm's cache:
+
+```sh
+npm install -g github:MasterWushi/palsync --force
 ```
 
 ### `palsync --version` shows an old version after install
@@ -132,8 +141,9 @@ tools — same drift guards, same preserve-on-pull, same uncreatable-type backst
 - **The MCP server never exits on its own.** Idle releases only the pal lock (a courtesy to
   teammates); the next tool call re-locks. The server lives exactly as long as Claude Code does.
 
-The PalBuilder coding skills (`palbuilder-frontend`, `palbuilder-backend`) are **always** injected,
-and so are the **design skills**: `design-system-init` (interview the user + reference images into a
+The PalBuilder coding skills (`palbuilder-frontend`, `palbuilder-backend`, and `palbuilder-jobs-http`
+— background Jobs, server-side HTTP, JSON parsing and long-running work, with a self-polling progress
+UI) are **always** injected, and so are the **design skills**: `design-system-init` (interview the user + reference images into a
 project `DESIGN_SYSTEM.md` + `COMPONENTS.md`) and `design-build` (enforce that system while building
 UI, with a render-and-critique review gate). They cost no context until the agent opens them, so they
 ride along every session — reach for them on any UI work.
